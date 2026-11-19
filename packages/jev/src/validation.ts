@@ -11,7 +11,7 @@ function declaredKeys(question: JevQuestion): string[] {
 }
 
 function checkedProbabilities(value: unknown, keys: readonly string[]): Record<string, number> {
-  if (!isObject(value) || keys.some((key) => typeof value[key] !== "number" || !Number.isFinite(value[key]) || (value[key] as number) < 0 || (value[key] as number) > 1)) throw new JevProtocolError();
+  if (!isObject(value) || Object.keys(value).some((key) => !keys.includes(key)) || keys.some((key) => typeof value[key] !== "number" || !Number.isFinite(value[key]) || (value[key] as number) < 0 || (value[key] as number) > 1)) throw new JevProtocolError();
   const probabilities = Object.fromEntries(keys.map((key) => [key, value[key] as number]));
   const total = Object.values(probabilities).reduce((sum, probability) => sum + probability, 0);
   if (Math.abs(total - 1) > 1e-6) throw new JevProtocolError();

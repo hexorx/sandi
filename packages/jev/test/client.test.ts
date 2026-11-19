@@ -46,6 +46,7 @@ describe("request builders", () => {
     expect(() => validateResponse(req, { answers: { route: { type: "score", choice: { support: 0.7, billing: 0.3 } } } })).toThrowError();
     expect(() => validateResponse(req, { answers: { route: { type: "choice", choice: { support: 0.7, billing: 0.2 } } } })).toThrowError();
     expect(() => validateResponse(req, { answers: { route: { type: "choice", choice: { support: 1.1, billing: -0.1 } } } })).toThrowError();
+    expect(() => validateResponse(req, { answers: { route: { type: "choice", choice: { support: 0.7, billing: 0.3, unexpected: 1 } } } })).toThrowError();
     expect(() => validateResponse(req, { model: "jev-unsupported", answers: { route: { type: "choice", choice: { support: 0.7, billing: 0.3 } } } })).toThrowError();
   });
 
@@ -68,7 +69,7 @@ describe("request builders", () => {
       allowed: {
         value: "yes",
         headers: { authorization: "discard-me" },
-        probabilities: { yes: 0.8, no: 0.2, token: "discard-me" },
+        probabilities: { yes: 0.8, no: 0.2 },
       },
     });
     expect(sanitized).toEqual({ allowed: { value: "yes", probabilities: { yes: 0.8, no: 0.2 } } });
