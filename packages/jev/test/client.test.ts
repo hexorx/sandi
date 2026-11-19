@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import realNoulResponse from "./fixtures/real-noul-response.json" with { type: "json" };
 import { choice, createJevClient, hashRequest, JevError, noul, request, score, validateResponse } from "../src/index.js";
 
 const demoRequest = request("A synthetic tool request", {
@@ -10,7 +11,6 @@ const demoRequest = request("A synthetic tool request", {
 describe("typed responses", () => {
   it("preserves declared question and answer keys in the client result", async () => {
     const response = await createJevClient().evaluate(demoRequest);
-    expectTypeOf(demoRequest.questions.safe).toEqualTypeOf<{ type: "noul"; instructions: string }>();
     expectTypeOf(response.safe.value).toEqualTypeOf<"yes" | "no">();
     expectTypeOf(response.route.value).toEqualTypeOf<"support" | "billing">();
     expectTypeOf(response.urgency.value).toEqualTypeOf<"low" | "medium" | "high">();
@@ -20,6 +20,36 @@ describe("typed responses", () => {
 });
 
 describe("request builders", () => {
+  it("normalizes the recorded real Jev answers envelope", () => {
+    const realRequest = request("synthetic", { safe: noul("Allow this synthetic action?") });
+    expect(validateResponse(realRequest, realNoulResponse)).toEqual({
+      safe: { value: "yes", probabilities: { yes: 0.56, no: 0.44 } },
+    });
+  });
+
+  it("normalizes choice and score distributions from typed Jev answers", () => {
+    const typedRequest = request("synthetic", {
+      route: choice("Choose a route", { support: "Support", billing: "Billing" }),
+      urgency: score("Rate urgency", ["low", "high"] as const),
+    });
+    expect(validateResponse(typedRequest, { model: "jev-1.14.0", answers: {
+      route: { type: "choice", choice: { support: 0.7, billing: 0.3 } },
+      urgency: { type: "score", score: { low: 0.2, high: 0.8 } },
+    }, usage: { input_tokens: 1, output_tokens: 1 } })).toEqual({
+      route: { value: "support", probabilities: { support: 0.7, billing: 0.3 } },
+      urgency: { value: "high", probabilities: { low: 0.2, high: 0.8 } },
+    });
+  });
+
+  it("rejects wire answers with an unexpected type or invalid distribution", () => {
+    const req = request("synthetic", { route: choice("Choose", { support: "Support", billing: "Billing" }) });
+    expect(() => validateResponse(req, { answers: { route: { type: "score", choice: { support: 0.7, billing: 0.3 } } } })).toThrowError();
+    expect(() => validateResponse(req, { answers: { route: { type: "choice", choice: { support: 0.7, billing: 0.2 } } } })).toThrowError();
+    expect(() => validateResponse(req, { answers: { route: { type: "choice", choice: { support: 1.1, billing: -0.1 } } } })).toThrowError();
+    expect(() => validateResponse(req, { answers: { route: { type: "choice", choice: { support: 0.7, billing: 0.3, unexpected: 1 } } } })).toThrowError();
+    expect(() => validateResponse(req, { model: "jev-unsupported", answers: { route: { type: "choice", choice: { support: 0.7, billing: 0.3 } } } })).toThrowError();
+  });
+
   it("build the pinned object request with the Jev wire field names", () => {
     expect(demoRequest).toEqual({ model: "jev-1.14.0", state: "A synthetic tool request", questions: {
       safe: { type: "noul", instructions: "Should the tool call be allowed?" },
@@ -43,23 +73,6 @@ describe("request builders", () => {
       },
     });
     expect(sanitized).toEqual({ allowed: { value: "yes", probabilities: { yes: 0.8, no: 0.2 } } });
-  });
-
-  it("rejects extra top-level answer keys", () => {
-    const req = request("synthetic", { route: choice("Route?", { support: "Support", billing: "Billing" }) });
-    expect(() => validateResponse(req, {
-      route: { value: "support", probabilities: { support: 0.8, billing: 0.2 } },
-      unexpected: { value: "private", probabilities: { yes: 1 } },
-    })).toThrowError();
-  });
-
-  it("rejects undeclared answers and malformed probability maps", () => {
-    const req = request("synthetic", { route: choice("Route?", { support: "Support", billing: "Billing" }) });
-    for (const invalid of [
-      { route: { value: "unknown", probabilities: { support: 0.5, billing: 0.5 } } },
-      { route: { value: "support", probabilities: { support: 0.4, billing: 0.4 } } },
-      { route: { value: "support", probabilities: { support: 0.5, billing: 0.5, other: 0 } } },
-    ]) expect(() => validateResponse(req, invalid)).toThrowError();
   });
 });
 

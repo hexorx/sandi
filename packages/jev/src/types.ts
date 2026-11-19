@@ -38,7 +38,7 @@ export interface JevFixture {
 
 export interface JevClient {
   readonly mode: JevMode;
-  evaluate<const Q extends Record<string, JevQuestion>>(request: { model: typeof JEV_MODEL; state: string; questions: Q }, options?: { signal?: AbortSignal }): Promise<JevResponse<Q>>;
+  evaluate<const Q extends Record<string, JevQuestion>>(request: JevRequest & { questions: Q }, options?: { signal?: AbortSignal }): Promise<JevResponse<Q>>;
 }
 
 export type JevErrorCode = "FIXTURE_NOT_FOUND" | "HTTP_ERROR" | "TIMEOUT" | "INVALID_JSON" | "PROTOCOL_ERROR" | "LIVE_NOT_CONFIGURED";

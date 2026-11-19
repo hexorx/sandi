@@ -19,6 +19,6 @@ console.log(jev.mode, result.route?.probabilities);
 
 The mock computes one positive weight per answer key from SHA-256 of the canonical request, question name, and answer key, then normalizes those weights to probabilities. The output is stable for the same request and always covers every declared option or level.
 
-The response validator currently expects a normalized map from question names to `{ value, probabilities }`, as documented by the showcase architecture. The provider's exact envelope has not been confirmed by a live smoke call yet; wire decoding is isolated in `src/validation.ts` so it can be adapted without changing callers.
+The live adapter validates Jev's `{ model, answers, usage }` envelope at the transport boundary and normalizes typed `noul`, `choice`, and `score` answers to `{ value, probabilities }`. Mock answers use the same wire shape and decoder; replay fixtures stay deterministic and offline. The recorded response fixture in `test/fixtures/real-noul-response.json` contains only the scrubbed answer envelope and usage counts.
 
 To record a fixed synthetic demo fixture manually, build the package, set `TYPESAFE_API_KEY` in the shell, then run `pnpm --filter @sandi/jev record-fixture -- synthetic-tool-gate`. The recorder accepts only that named scenario, stores only its fixed request and validated response, and never writes headers or credentials.
