@@ -167,7 +167,10 @@ export class OllamaModel extends Model<OllamaModelConfig> {
   }
 }
 
-export function createModelFromEnvironment(environment: NodeJS.ProcessEnv): ModelSelection {
+export function createModelFromEnvironment(
+  environment: NodeJS.ProcessEnv,
+  options: { fetch?: typeof fetch } = {},
+): ModelSelection {
   if (environment.NODE_ENV === 'test') return { kind: 'scripted' };
   const baseUrl = environment.OLLAMA_BASE_URL?.trim();
   const modelId = environment.OLLAMA_MODEL?.trim();
@@ -175,7 +178,7 @@ export function createModelFromEnvironment(environment: NodeJS.ProcessEnv): Mode
   try {
     const endpoint = new URL(baseUrl);
     if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') return { kind: 'scripted' };
-    return { kind: 'ollama', model: new OllamaModel({ baseUrl, modelId, contextWindowLimit: 8192 }) };
+    return { kind: 'ollama', model: new OllamaModel({ baseUrl, modelId, contextWindowLimit: 8192, fetch: options.fetch }) };
   } catch {
     return { kind: 'scripted' };
   }
