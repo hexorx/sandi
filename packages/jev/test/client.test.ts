@@ -1,10 +1,22 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { choice, createJevClient, hashRequest, JevError, noul, request, score, validateResponse } from "../src/index.js";
 
 const demoRequest = request("A synthetic tool request", {
   safe: noul("Should the tool call be allowed?"),
   route: choice("Choose a route", { support: "Support queue", billing: "Billing queue" }),
   urgency: score("Rate urgency", ["low", "medium", "high"] as const),
+});
+
+describe("typed responses", () => {
+  it("preserves declared question and answer keys in the client result", async () => {
+    const response = await createJevClient().evaluate(demoRequest);
+    expectTypeOf(demoRequest.questions.safe).toEqualTypeOf<{ type: "noul"; instructions: string }>();
+    expectTypeOf(response.safe.value).toEqualTypeOf<"yes" | "no">();
+    expectTypeOf(response.route.value).toEqualTypeOf<"support" | "billing">();
+    expectTypeOf(response.urgency.value).toEqualTypeOf<"low" | "medium" | "high">();
+    expectTypeOf(response.route.probabilities).toEqualTypeOf<Record<"support" | "billing", number>>();
+    expectTypeOf(response).toHaveProperty("safe");
+  });
 });
 
 describe("request builders", () => {
@@ -27,10 +39,19 @@ describe("request builders", () => {
       allowed: {
         value: "yes",
         headers: { authorization: "discard-me" },
-        probabilities: { yes: 0.8, no: 0.2, token: "discard-me" },
+        probabilities: { yes: 0.8, no: 0.2 },
       },
     });
     expect(sanitized).toEqual({ allowed: { value: "yes", probabilities: { yes: 0.8, no: 0.2 } } });
+  });
+
+  it("rejects undeclared answers and malformed probability maps", () => {
+    const req = request("synthetic", { route: choice("Route?", { support: "Support", billing: "Billing" }) });
+    for (const invalid of [
+      { route: { value: "unknown", probabilities: { support: 0.5, billing: 0.5 } } },
+      { route: { value: "support", probabilities: { support: 0.4, billing: 0.4 } } },
+      { route: { value: "support", probabilities: { support: 0.5, billing: 0.5, other: 0 } } },
+    ]) expect(() => validateResponse(req, invalid)).toThrowError();
   });
 });
 

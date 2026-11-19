@@ -11,12 +11,22 @@ export interface JevRequest {
   questions: Record<string, JevQuestion>;
 }
 
-export interface JevAnswer {
-  value: string | number | boolean;
-  probabilities: Record<string, number>;
-}
+export type JevAnswerValue<Q extends JevQuestion> = Q extends { type: "noul" }
+  ? "yes" | "no"
+  : Q extends { type: "choice"; criteria: infer C extends Record<string, string> }
+    ? keyof C & string
+    : Q extends { type: "score"; criteria: infer C extends readonly string[] }
+      ? C[number]
+      : never;
 
-export type JevResponse = Record<string, JevAnswer>;
+export type JevAnswer<Q extends JevQuestion = JevQuestion> = {
+  value: JevAnswerValue<Q>;
+  probabilities: Record<JevAnswerValue<Q>, number>;
+};
+
+export type JevResponse<Q extends Record<string, JevQuestion> = Record<string, JevQuestion>> = {
+  [K in keyof Q]: JevAnswer<Q[K]>;
+};
 export type JevMode = "mock" | "replay" | "live";
 
 export interface JevFixture {
@@ -28,7 +38,7 @@ export interface JevFixture {
 
 export interface JevClient {
   readonly mode: JevMode;
-  evaluate(request: JevRequest, options?: { signal?: AbortSignal }): Promise<JevResponse>;
+  evaluate<const Q extends Record<string, JevQuestion>>(request: { model: typeof JEV_MODEL; state: string; questions: Q }, options?: { signal?: AbortSignal }): Promise<JevResponse<Q>>;
 }
 
 export type JevErrorCode = "FIXTURE_NOT_FOUND" | "HTTP_ERROR" | "TIMEOUT" | "INVALID_JSON" | "PROTOCOL_ERROR" | "LIVE_NOT_CONFIGURED";

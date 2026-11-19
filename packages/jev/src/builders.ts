@@ -1,22 +1,22 @@
-import { JEV_MODEL, type JevQuestion, type JevRequest } from "./types.js";
+import { JEV_MODEL, type JevQuestion } from "./types.js";
 
-export function noul(instructions: string): JevQuestion {
+export function noul(instructions: string): Extract<JevQuestion, { type: "noul" }> {
   return { type: "noul", instructions };
 }
 
-export function choice<const C extends Record<string, string>>(instructions: string, criteria: C): JevQuestion & { type: "choice"; criteria: C } {
+export function choice<const C extends Record<string, string>>(instructions: string, criteria: C): { type: "choice"; instructions: string; criteria: C } {
   validateCriteria(criteria);
   return { type: "choice", instructions, criteria };
 }
 
-export function score<const C extends readonly string[]>(instructions: string, criteria: C): JevQuestion & { type: "score"; criteria: C } {
+export function score<const C extends readonly string[]>(instructions: string, criteria: C): { type: "score"; instructions: string; criteria: C } {
   if (!Array.isArray(criteria) || criteria.length === 0 || criteria.some((entry) => !entry.trim())) {
     throw new TypeError("score criteria must be a non-empty array of non-empty levels");
   }
   return { type: "score", instructions, criteria };
 }
 
-export function request<const Q extends Record<string, JevQuestion>>(state: string, questions: Q): JevRequest & { questions: Q } {
+export function request<const Q extends Record<string, JevQuestion>>(state: string, questions: Q): { model: typeof JEV_MODEL; state: string; questions: Q } {
   if (!state.trim()) throw new TypeError("state must be non-empty");
   if (Object.keys(questions).length === 0) throw new TypeError("questions must be non-empty");
   return { model: JEV_MODEL, state, questions };
