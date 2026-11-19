@@ -50,7 +50,7 @@ const config = {
       boxShadow: {
         card: "0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.04)",
         popover: "0 16px 40px rgb(15 23 42 / 0.16)",
-        focus: "0 0 0 3px rgb(var(--color-brand) / 0.28)",
+        focus: "0 0 0 3px rgb(var(--color-brand))",
       },
       maxWidth: {
         reading: "44rem",
