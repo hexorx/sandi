@@ -45,6 +45,14 @@ describe("request builders", () => {
     expect(sanitized).toEqual({ allowed: { value: "yes", probabilities: { yes: 0.8, no: 0.2 } } });
   });
 
+  it("rejects extra top-level answer keys", () => {
+    const req = request("synthetic", { route: choice("Route?", { support: "Support", billing: "Billing" }) });
+    expect(() => validateResponse(req, {
+      route: { value: "support", probabilities: { support: 0.8, billing: 0.2 } },
+      unexpected: { value: "private", probabilities: { yes: 1 } },
+    })).toThrowError();
+  });
+
   it("rejects undeclared answers and malformed probability maps", () => {
     const req = request("synthetic", { route: choice("Route?", { support: "Support", billing: "Billing" }) });
     for (const invalid of [

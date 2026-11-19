@@ -4,6 +4,7 @@ import { JevProtocolError, type JevRequest, type JevResponse } from "./types.js"
 export function validateResponse<const Q extends JevRequest["questions"]>(request: JevRequest & { questions: Q }, input: unknown): JevResponse<Q> {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new JevProtocolError();
   const body = input as Record<string, unknown>;
+  if (Object.keys(body).some((name) => Object.hasOwn(request.questions, name) === false && name !== "authorization")) throw new JevProtocolError();
   const result: Record<string, unknown> = {};
   for (const [name, question] of Object.entries(request.questions)) {
     const raw = body[name];
