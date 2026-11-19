@@ -6,6 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --config ../../vitest.config.ts --passWithNoTests",
     "start": "node dist/index.js",
     "dev": "tsc -p tsconfig.json --watch",
     "clean": "rm -rf dist .turbo"
