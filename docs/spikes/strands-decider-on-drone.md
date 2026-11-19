@@ -47,11 +47,11 @@ The first model response took 1.58 seconds (24 generated tokens); the final resp
 
 The live run used the Strands SDK’s OpenAI-compatible chat model with a local endpoint and only synthetic prompts plus a local stub tool. No application traffic or paid APIs were involved.
 
-| Decision | Result | Strands invocation latency |
-| --- | --- | ---: |
-| Classify “My package has not arrived yet” as billing, shipping, or account | `shipping` (expected) | 417 ms |
-| Decide whether 8/100 is below 10% | `Yes` (expected) | 488 ms |
-| Look up synthetic order `4821` with `lookup_order` | Called once with `order_id: "4821"`; returned packed, ETA 2 days | 2,293 ms |
+| Decision                                                                   | Result                                                           | Strands invocation latency |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------: |
+| Classify “My package has not arrived yet” as billing, shipping, or account | `shipping` (expected)                                            |                     417 ms |
+| Decide whether 8/100 is below 10%                                          | `Yes` (expected)                                                 |                     488 ms |
+| Look up synthetic order `4821` with `lookup_order`                         | Called once with `order_id: "4821"`; returned packed, ETA 2 days |                   2,293 ms |
 
 All three calls completed without model/request failures. The tool name, argument, and result were correct. The tool-use case took longer because it included the model/tool/model loop. This small synthetic sample does not measure accuracy on production traffic or consistency across repeated runs. The initial local harness setup needed Strands' optional `openai` peer dependency; after adding it in run scratch, all calls succeeded.
 
