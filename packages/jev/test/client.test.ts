@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { choice, createJevClient, hashRequest, JevError, noul, request, score } from "../src/index.js";
+import { choice, createJevClient, hashRequest, JevError, noul, request, score, validateResponse } from "../src/index.js";
 
 const demoRequest = request("A synthetic tool request", {
   safe: noul("Should the tool call be allowed?"),
@@ -19,6 +19,18 @@ describe("request builders", () => {
   it("rejects invalid criteria", () => {
     expect(() => choice("Choose", { only: "one" })).toThrow(TypeError);
     expect(() => score("Rate", [])).toThrow(TypeError);
+  });
+
+  it("keeps only declared answer and probability fields at the fixture boundary", () => {
+    const sanitized = validateResponse(request("synthetic", { allowed: noul("Allow? ") }), {
+      authorization: "discard-me",
+      allowed: {
+        value: "yes",
+        headers: { authorization: "discard-me" },
+        probabilities: { yes: 0.8, no: 0.2, token: "discard-me" },
+      },
+    });
+    expect(sanitized).toEqual({ allowed: { value: "yes", probabilities: { yes: 0.8, no: 0.2 } } });
   });
 });
 

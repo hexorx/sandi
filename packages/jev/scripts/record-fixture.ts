@@ -12,7 +12,7 @@ const scenarios = {
 } as const;
 
 const scenarioName = process.argv[2];
-if (!scenarioName || !(scenarioName in scenarios)) {
+if (!scenarioName || !Object.hasOwn(scenarios, scenarioName)) {
   throw new Error(`Choose one supported scenario: ${Object.keys(scenarios).join(", ")}`);
 }
 const apiKey = process.env.TYPESAFE_API_KEY;
