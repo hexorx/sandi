@@ -1,4 +1,4 @@
-import { JEV_MODEL, type JevQuestion } from "./types.js";
+import { JEV_MODEL, type JevQuestion, type JevRequest } from "./types.js";
 
 export function noul(instructions: string): Extract<JevQuestion, { type: "noul" }> {
   return { type: "noul", instructions };
@@ -16,7 +16,7 @@ export function score<const C extends readonly string[]>(instructions: string, c
   return { type: "score", instructions, criteria };
 }
 
-export function request<const Q extends Record<string, JevQuestion>>(state: string, questions: Q): { model: typeof JEV_MODEL; state: string; questions: Q } {
+export function request<const Q extends Record<string, JevQuestion>>(state: string, questions: Q): JevRequest & { questions: Q } {
   if (!state.trim()) throw new TypeError("state must be non-empty");
   if (Object.keys(questions).length === 0) throw new TypeError("questions must be non-empty");
   return { model: JEV_MODEL, state, questions };
