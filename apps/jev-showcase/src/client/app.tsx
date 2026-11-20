@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { JevAgentPage } from './jev-agent-page.js';
 import triageCode from '../server/triage.ts?raw';
 import { ContentModerationPage } from './moderation.js';
 import { ToolSafetyPage } from './tool-safety-page.js';
@@ -14,11 +15,13 @@ const useCases = [
   { number: '01', title: 'Tool safety', text: 'Gate tool calls with an explainable risk decision.' },
   { number: '02', title: 'Support ticket triage', text: 'Route tickets with confidence and human review.' },
   { number: '03', title: 'Content moderation', text: 'Apply a policy consistently, with a clear human-review band.' },
+  { number: '05', title: 'Jev consulting agent', text: 'Let an agent check with Jev before it acts.' },
 ];
 
 const sampleTicket = 'My headphones arrived with a cracked ear cup, and I need a replacement before my trip next week.';
 
 export function App({ mode, path = window.location.pathname }: AppProps) {
+  if (path === '/jev-agent') return <JevAgentPage mode={mode} />;
   if (path === '/tool-safety') return <ToolSafetyPage />;
   if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
   const [ticket, setTicket] = useState(sampleTicket);
@@ -49,6 +52,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <a href="/tool-safety" className="hover:text-brand">Tool safety</a>
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
           <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
+          <a href="/jev-agent" data-testid="jev-agent__nav-link" className="hover:text-brand">Jev consulting agent</a>
         </nav>
         <span
           className={`inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 text-xs font-semibold tracking-wide ${
@@ -117,6 +121,8 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
               {item.number === '03' ? <a href="/content-moderation" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__content-moderation-link">
+                Open demo <span aria-hidden="true">↗</span>
+              </a> : item.number === '05' ? <a href="/jev-agent" data-testid="jev-agent__home-link" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline">
                 Open demo <span aria-hidden="true">↗</span>
               </a> : <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Example coming soon <span aria-hidden="true">↗</span></span>}
             </article>
