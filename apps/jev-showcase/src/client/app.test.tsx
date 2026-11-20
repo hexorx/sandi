@@ -8,6 +8,17 @@ import { App } from './app.js';
 afterEach(() => cleanup());
 
 describe('landing page', () => {
+  it('links to the tool safety use case from navigation', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByRole('link', { name: /tool safety/i })).toHaveAttribute('href', '/tool-safety');
+  });
+
+  it('renders the tool safety page at its route', () => {
+    render(<App mode="mock" path="/tool-safety" />);
+    expect(screen.getByRole('heading', { name: /should this tool call run/i })).toBeTruthy();
+    expect(screen.getByTestId('tool-safety-code').textContent).toContain('createToolSafetyRequest');
+  });
+
   it('shows the showcase introduction and mock mode badge', () => {
     render(<App mode="mock" />);
     expect(screen.getByRole('heading', { name: /decisions, made clear/i })).toBeTruthy();

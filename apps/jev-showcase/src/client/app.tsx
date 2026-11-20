@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import triageCode from '../server/triage.ts?raw';
 import { ContentModerationPage } from './moderation.js';
+import { ToolSafetyPage } from './tool-safety-page.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -10,14 +11,15 @@ interface AppProps {
 }
 
 const useCases = [
-  { number: '01', title: 'A clear recommendation', text: 'Turn a question into a decision you can explain.' },
-  { number: '02', title: 'Choices with context', text: 'Compare options against the criteria that matter.' },
+  { number: '01', title: 'Tool safety', text: 'Gate tool calls with an explainable risk decision.' },
+  { number: '02', title: 'Support ticket triage', text: 'Route tickets with confidence and human review.' },
   { number: '03', title: 'Content moderation', text: 'Apply a policy consistently, with a clear human-review band.' },
 ];
 
 const sampleTicket = 'My headphones arrived with a cracked ear cup, and I need a replacement before my trip next week.';
 
 export function App({ mode, path = window.location.pathname }: AppProps) {
+  if (path === '/tool-safety') return <ToolSafetyPage />;
   if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
   const [ticket, setTicket] = useState(sampleTicket);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -44,6 +46,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <span>Jev <span className="font-normal text-muted">Showcase</span></span>
         </a>
         <nav aria-label="Main navigation" className="hidden items-center gap-6 text-sm text-muted sm:flex">
+          <a href="/tool-safety" className="hover:text-brand">Tool safety</a>
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
           <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
         </nav>

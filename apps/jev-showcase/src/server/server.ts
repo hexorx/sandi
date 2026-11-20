@@ -4,6 +4,8 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createJevClient } from '@sandi/jev';
+import { findToolCall } from './tool-calls.js';
+import { decideToolCall } from './tool-safety.js';
 import { triageTicket } from './triage.js';
 import { runModeration, ModerationError } from './moderation.js';
 
@@ -21,7 +23,7 @@ const contentTypes: Record<string, string> = {
 };
 
 export function getRuntimeMode(environment: NodeJS.ProcessEnv): RuntimeMode {
-  return environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY) ? 'live' : 'mock';
+  return environment.NODE_ENV !== 'test' && environment.CI !== 'true' && environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY) ? 'live' : 'mock';
 }
 
 function sendJson(response: ServerResponse, statusCode: number, payload: object): void {
@@ -81,6 +83,28 @@ function createModerationClient(environment: NodeJS.ProcessEnv) {
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (requestUrl.pathname === '/api/tool-safety/evaluate') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
+      const toolCallId = (body as { toolCallId?: unknown }).toolCallId;
+      const toolCall = typeof toolCallId === 'string' ? findToolCall(toolCallId) : undefined;
+      if (!toolCall) {
+        sendJson(response, 400, { error: 'Choose a valid sample tool call.' });
+        return;
+      }
+      const mode = getRuntimeMode(environment);
+      const client = createJevClient({ mode, apiKey: mode === 'live' ? environment.TYPESAFE_API_KEY : undefined, runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' } });
+      sendJson(response, 200, await decideToolCall(toolCall, { client }));
+    } catch {
+      sendJson(response, 502, { error: 'Safety decision is unavailable. Try again.' });
+    }
+    return;
+  }
   if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/content-moderation/run') {
     const requestId = randomUUID();
     try {
