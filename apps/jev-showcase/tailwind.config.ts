@@ -1,9 +1,12 @@
+import type { Config } from "tailwindcss";
+
 /**
  * App-local design tokens for the Jev showcase.
  * Keep presentation tokens here; domain and API types belong in packages/shared.
  * Components should consume semantic colors so light/dark mode stays consistent.
  */
-const config = {
+const config: Config = {
+  content: ["./index.html", "./src/client/**/*.{ts,tsx}"],
   darkMode: "class",
   theme: {
     extend: {
@@ -36,28 +39,17 @@ const config = {
         compact: ["0.8125rem", { lineHeight: "1.5" }],
         micro: ["0.6875rem", { lineHeight: "1.4", letterSpacing: "0.04em" }],
       },
-      spacing: {
-        4.5: "1.125rem",
-        5.5: "1.375rem",
-        18: "4.5rem",
-        22: "5.5rem",
-      },
-      borderRadius: {
-        card: "0.875rem",
-        panel: "1.125rem",
-        pill: "9999px",
-      },
+      spacing: { 4.5: "1.125rem", 5.5: "1.375rem", 18: "4.5rem", 22: "5.5rem" },
+      borderRadius: { card: "0.875rem", panel: "1.125rem", pill: "9999px" },
       boxShadow: {
         card: "0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.04)",
         popover: "0 16px 40px rgb(15 23 42 / 0.16)",
         focus: "0 0 0 3px rgb(var(--color-brand))",
       },
-      maxWidth: {
-        reading: "44rem",
-        workspace: "88rem",
-      },
+      maxWidth: { reading: "44rem", workspace: "88rem" },
     },
   },
+  plugins: [],
 };
 
 export default config;

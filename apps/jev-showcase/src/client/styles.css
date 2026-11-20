@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --color-canvas: 245 247 251;
+  --color-surface: 255 255 255;
+  --color-ink: 22 32 51;
+  --color-muted: 100 116 139;
+  --color-line: 226 232 240;
+  --color-brand: 37 99 235;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { min-width: 320px; margin: 0; }
