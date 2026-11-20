@@ -28,8 +28,52 @@ jobs:
       - run: env -u TYPESAFE_API_KEY pnpm typecheck
       - run: env -u TYPESAFE_API_KEY pnpm test
       - run: env -u TYPESAFE_API_KEY pnpm build
-      - name: Build Jev showcase Docker image
-        run: docker build -f apps/jev-showcase/Dockerfile -t sandi-jev-showcase:ci .
+
+  container-smoke:
+    name: Container smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --file apps/jev-showcase/Dockerfile --tag sandi-jev-showcase:ci .
+      - name: Check mock-mode endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="sandi-jev-showcase-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          cleanup() {
+            docker rm --force "$container_name" >/dev/null 2>&1 || true
+          }
+
+          fail_with_logs() {
+            echo "Container smoke test failed; container logs follow:" >&2
+            docker logs "$container_name" 2>&1 || true
+            exit 1
+          }
+
+          trap cleanup EXIT
+          docker run --detach \
+            --name "$container_name" \
+            --publish 127.0.0.1:3000:3000 \
+            --env JEV_MODE=mock \
+            sandi-jev-showcase:ci || fail_with_logs
+
+          for attempt in {1..30}; do
+            health_status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/healthz 2>/dev/null || true)"
+            mode_status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/api/mode 2>/dev/null || true)"
+            if [[ "$health_status" == "200" && "$mode_status" == "200" ]]; then
+              echo "Container endpoints are ready (mock mode)."
+              exit 0
+            fi
+            if [[ "$(docker inspect --format '{{.State.Running}}' "$container_name")" != "true" ]]; then
+              fail_with_logs
+            fi
+            sleep 1
+          done
+
+          echo "Timed out waiting for /healthz and /api/mode (last HTTP statuses: $health_status, $mode_status)." >&2
+          fail_with_logs
 
   secret-scan:
     runs-on: ubuntu-latest
