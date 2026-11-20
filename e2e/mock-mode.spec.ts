@@ -64,6 +64,21 @@ test('updates the confidence playground decision as the slider changes', async (
   await expect(page.getByTestId('threshold-decision')).toContainText('allow');
 });
 
+test('runs the decision pipeline and shows receipts for every gate', async ({ page }) => {
+  await page.goto('/decision-pipeline');
+  await expect(page.getByRole('heading', { name: 'Decision pipeline' })).toBeVisible();
+  await expect(page.getByLabel('Runtime mode')).toHaveText('MOCK');
+  await page.getByTestId('run-decision-pipeline').click();
+
+  await expect(page.getByTestId('decision-final-action')).toHaveText('approved-queue');
+  const receipts = page.getByTestId('decision-receipt-log');
+  await expect(receipts.locator('li')).toHaveCount(3);
+  await expect(receipts).toContainText('safety');
+  await expect(receipts).toContainText('quality');
+  await expect(receipts).toContainText('routing');
+  await expect(receipts).toContainText('Quality passed; routed to the approved queue.');
+});
+
 test('shows an actionable error when moderation cannot reach its endpoint', async ({ page }) => {
   await page.route('**/api/use-cases/content-moderation/run', (route) => route.abort());
   await page.goto('/content-moderation');
