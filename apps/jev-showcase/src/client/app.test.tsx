@@ -30,6 +30,9 @@ describe('landing page', () => {
     expect(screen.getByTestId('nav-support-triage')).toHaveAttribute('href', '#support-triage');
     fireEvent.click(screen.getByTestId('triage-button'));
     expect(await screen.findByTestId('triage-result')).toHaveTextContent('fulfillment');
+    expect(screen.getByTestId('triage-category')).toHaveTextContent('orders');
+    expect(screen.getByTestId('triage-urgency')).toHaveTextContent('normal');
+    expect(screen.getByTestId('triage-selected-queue')).toHaveTextContent('fulfillment');
     expect(screen.getByTestId('triage-confidence-category')).toHaveTextContent('91%');
     expect(screen.getByTestId('triage-code')).toHaveTextContent('CONFIDENCE_THRESHOLD');
     expect(fetch).toHaveBeenCalledWith('/api/triage', expect.objectContaining({ method: 'POST' }));
@@ -44,6 +47,10 @@ describe('landing page', () => {
     render(<App mode="mock" />);
     fireEvent.click(screen.getByTestId('triage-button'));
     expect(await screen.findByTestId('needs-human')).toBeInTheDocument();
+    expect(screen.getByTestId('triage-result')).toHaveTextContent('human-review');
+    expect(screen.getByTestId('triage-category')).toHaveTextContent('orders');
+    expect(screen.getByTestId('triage-urgency')).toHaveTextContent('normal');
+    expect(screen.getByTestId('triage-selected-queue')).toHaveTextContent('fulfillment');
     vi.restoreAllMocks();
   });
 });

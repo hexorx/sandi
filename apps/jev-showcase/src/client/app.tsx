@@ -84,7 +84,12 @@ export function App({ mode }: AppProps) {
             </button>
             {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
             {result && <div data-testid="triage-result" className="mt-6 rounded-xl border border-line bg-canvas p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Recommended route</p>
+              <dl className="grid gap-2 text-sm sm:grid-cols-3">
+                <div><dt className="text-xs text-muted">Category</dt><dd data-testid="triage-category" className="font-medium">{answer('category')?.value ?? 'Unavailable'}</dd></div>
+                <div><dt className="text-xs text-muted">Urgency</dt><dd data-testid="triage-urgency" className="font-medium">{answer('urgency')?.value ?? 'Unavailable'}</dd></div>
+                <div><dt className="text-xs text-muted">Selected queue</dt><dd data-testid="triage-selected-queue" className="font-medium">{answer('queue')?.value ?? 'Unavailable'}</dd></div>
+              </dl>
+              <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">Final route</p>
               <p className="mt-1 font-semibold">{String(result.route)}</p>
               {result.needsHuman === true && <p data-testid="needs-human" className="mt-2 text-sm text-amber-800">Needs human review · at least one decision is below the 65% confidence threshold.</p>}
               <div className="mt-4 grid grid-cols-3 gap-2 text-xs" data-testid="probabilities">
