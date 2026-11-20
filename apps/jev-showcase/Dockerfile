@@ -3,6 +3,7 @@ WORKDIR /workspace
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile --filter @sandi/jev-showcase...
+RUN pnpm --filter @sandi/jev build
 RUN pnpm --filter @sandi/jev-showcase build
 
 FROM node:22-alpine AS runtime
