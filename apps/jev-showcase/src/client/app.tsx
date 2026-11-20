@@ -1,9 +1,11 @@
 import React from 'react';
+import { ToolSafetyPage } from './tool-safety-page.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
 interface AppProps {
   mode: RuntimeMode;
+  path?: string;
 }
 
 const useCases = [
@@ -12,7 +14,7 @@ const useCases = [
   { number: '03', title: 'A confidence score', text: 'See how strongly the evidence supports an outcome.' },
 ];
 
-export function App({ mode }: AppProps) {
+export function App({ mode, path = '/' }: AppProps) {
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
@@ -20,6 +22,9 @@ export function App({ mode }: AppProps) {
           <span className="grid size-9 place-items-center rounded-xl bg-brand text-sm font-bold text-white">J</span>
           <span>Jev <span className="font-normal text-muted">Showcase</span></span>
         </a>
+        <nav aria-label="Use cases" className="mr-auto ml-8 hidden gap-5 text-sm font-medium text-muted sm:flex">
+          <a href="/tool-safety" className="hover:text-brand">Tool safety</a>
+        </nav>
         <span
           className={`inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 text-xs font-semibold tracking-wide ${
             mode === 'live' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-line bg-surface text-muted'
@@ -31,7 +36,7 @@ export function App({ mode }: AppProps) {
         </span>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 pb-20 pt-12 lg:px-10 lg:pt-20">
+      {path === '/tool-safety' ? <ToolSafetyPage /> : <main className="mx-auto max-w-6xl px-6 pb-20 pt-12 lg:px-10 lg:pt-20">
         <section className="max-w-3xl">
           <p className="mb-5 text-xs font-semibold uppercase tracking-[0.18em] text-brand">A practical guide to Jev</p>
           <h1 className="text-5xl font-semibold leading-[1.08] tracking-[-0.045em] sm:text-6xl">
@@ -66,7 +71,7 @@ export function App({ mode }: AppProps) {
           <span>Built for thoughtful decisions.</span>
           <span>Safe to explore · Mock mode is the default</span>
         </footer>
-      </main>
+      </main>}
     </div>
   );
 }

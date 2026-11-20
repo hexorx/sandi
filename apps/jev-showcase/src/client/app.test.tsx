@@ -18,4 +18,15 @@ describe('landing page', () => {
     render(<App mode="live" />);
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');
   });
+
+  it('links to the tool safety use case from navigation', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByRole('link', { name: /tool safety/i })).toHaveAttribute('href', '/tool-safety');
+  });
+
+  it('renders the tool safety page at its route', () => {
+    render(<App mode="mock" path="/tool-safety" />);
+    expect(screen.getByRole('heading', { name: /should this tool call run/i })).toBeTruthy();
+    expect(screen.getByTestId('tool-safety-code').textContent).toContain('createToolSafetyRequest');
+  });
 });

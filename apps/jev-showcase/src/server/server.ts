@@ -2,6 +2,9 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createJevClient } from '@sandi/jev';
+import { findToolCall } from './tool-calls.js';
+import { decideToolCall } from './tool-safety.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -17,7 +20,7 @@ const contentTypes: Record<string, string> = {
 };
 
 export function getRuntimeMode(environment: NodeJS.ProcessEnv): RuntimeMode {
-  return environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY) ? 'live' : 'mock';
+  return environment.NODE_ENV !== 'test' && environment.CI !== 'true' && environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY) ? 'live' : 'mock';
 }
 
 function sendJson(response: ServerResponse, statusCode: number, payload: object): void {
@@ -57,8 +60,32 @@ function serveClient(request: IncomingMessage, response: ServerResponse, pathnam
   createReadStream(resolvedFilePath).pipe(response);
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): void {
+async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (requestUrl.pathname === '/api/tool-safety/evaluate') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    try {
+      const body = await readRequestBody(request);
+      const toolCall = findToolCall(body.toolCallId);
+      if (!toolCall) {
+        sendJson(response, 400, { error: 'Choose a valid sample tool call.' });
+        return;
+      }
+      const mode = getRuntimeMode(environment);
+      const client = createJevClient({
+        mode: mode === 'live' ? 'live' : 'mock',
+        apiKey: mode === 'live' ? environment.TYPESAFE_API_KEY : undefined,
+        runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' },
+      });
+      sendJson(response, 200, await decideToolCall(toolCall, { client }));
+    } catch {
+      sendJson(response, 502, { error: 'Safety decision is unavailable. Try again.' });
+    }
+    return;
+  }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
@@ -79,7 +106,18 @@ function handleRequest(request: IncomingMessage, response: ServerResponse, envir
 }
 
 export function createServer(environment: NodeJS.ProcessEnv = process.env): Server {
-  return createHttpServer((request, response) => handleRequest(request, response, environment));
+  return createHttpServer((request, response) => { void handleRequest(request, response, environment); });
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  let raw = '';
+  for await (const chunk of request) {
+    raw += chunk.toString();
+    if (raw.length > 16_384) throw new Error('Request body too large');
+  }
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid request body');
+  return parsed as Record<string, unknown>;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
