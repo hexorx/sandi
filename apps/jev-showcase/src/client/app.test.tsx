@@ -18,4 +18,9 @@ describe('landing page', () => {
     render(<App mode="live" />);
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');
   });
+
+  it('links the Jev agent use case from the home page', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByTestId('jev-agent__nav-link')).toHaveAttribute('href', '/jev-agent');
+  });
 });

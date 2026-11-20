@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createJevClientFromEnvironment, runJevAgent } from './jev-agent.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -57,8 +58,49 @@ function serveClient(request: IncomingMessage, response: ServerResponse, pathnam
   createReadStream(resolvedFilePath).pipe(response);
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): void {
+async function readJson(request: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 16_384) throw new Error('Request body is too large');
+    chunks.push(buffer);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/jev-agent/run') {
+    let body: unknown;
+    try {
+      body = await readJson(request);
+    } catch {
+      sendJson(response, 400, { error: 'Provide a valid JSON task and action.' });
+      return;
+    }
+    if (!isRecord(body) || typeof body.task !== 'string' || typeof body.action !== 'string' || !body.task.trim() || !body.action.trim() || body.task.length > 1000 || body.action.length > 1000) {
+      sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
+      return;
+    }
+    try {
+      const result = await runJevAgent({
+        task: body.task.trim(),
+        action: body.action.trim(),
+        jev: createJevClientFromEnvironment(environment),
+        environment,
+      });
+      sendJson(response, 200, result);
+    } catch {
+      sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
+    }
+    return;
+  }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
@@ -79,7 +121,11 @@ function handleRequest(request: IncomingMessage, response: ServerResponse, envir
 }
 
 export function createServer(environment: NodeJS.ProcessEnv = process.env): Server {
-  return createHttpServer((request, response) => handleRequest(request, response, environment));
+  return createHttpServer((request, response) => {
+    void handleRequest(request, response, environment).catch(() => {
+      if (!response.headersSent) sendJson(response, 500, { error: 'Request could not be completed.' });
+    });
+  });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

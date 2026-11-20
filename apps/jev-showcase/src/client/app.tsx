@@ -1,4 +1,5 @@
 import React from 'react';
+import { JevAgentPage } from './jev-agent-page.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -10,9 +11,11 @@ const useCases = [
   { number: '01', title: 'A clear recommendation', text: 'Turn a question into a decision you can explain.' },
   { number: '02', title: 'Choices with context', text: 'Compare options against the criteria that matter.' },
   { number: '03', title: 'A confidence score', text: 'See how strongly the evidence supports an outcome.' },
+  { number: '05', title: 'Jev consulting agent', text: 'Let an agent check with Jev before it acts.' },
 ];
 
 export function App({ mode }: AppProps) {
+  if (typeof window !== 'undefined' && window.location.pathname === '/jev-agent') return <JevAgentPage mode={mode} />;
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
@@ -25,6 +28,7 @@ export function App({ mode }: AppProps) {
             mode === 'live' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-line bg-surface text-muted'
           }`}
           aria-label="Runtime mode"
+          data-testid="app__mode-badge"
         >
           <span className={`size-1.5 rounded-full ${mode === 'live' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
           {mode.toUpperCase()}
@@ -55,9 +59,7 @@ export function App({ mode }: AppProps) {
               <span className="font-mono text-xs text-brand">{item.number}</span>
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
-              <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">
-                Example coming soon <span aria-hidden="true">↗</span>
-              </span>
+              {item.number === '05' ? <a href="/jev-agent" data-testid="jev-agent__nav-link" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline">Open demo <span aria-hidden="true">↗</span></a> : <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Example coming soon <span aria-hidden="true">↗</span></span>}
             </article>
           ))}
         </section>

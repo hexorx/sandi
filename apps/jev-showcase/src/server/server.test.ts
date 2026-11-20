@@ -50,4 +50,30 @@ describe('jev showcase server', () => {
     expect(await response.json()).toEqual({ mode: 'live' });
     expect(response.headers.get('set-cookie')).toBeNull();
   });
+
+  it('runs the scripted agent offline and returns the Jev decision trace', async () => {
+    const response = await fetch(`${await listen()}/api/use-cases/jev-agent/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ task: 'Prepare an export', action: 'Create an export link' }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json() as { agentMode: string; outcome: string; steps: Array<{ kind: string }> };
+    expect(result.agentMode).toBe('scripted');
+    expect(result.steps.map((step) => step.kind)).toContain('jev-check');
+    expect(result.steps.map((step) => step.kind)).toContain('result');
+    expect(result.steps.some((step) => step.kind === 'action')).toBe(result.outcome === 'acted');
+  });
+
+  it('rejects malformed agent input with a safe validation message', async () => {
+    const response = await fetch(`${await listen()}/api/use-cases/jev-agent/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ task: '', action: 'Create an export link' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Task and proposed action must be between 1 and 1000 characters.' });
+  });
 });
