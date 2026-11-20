@@ -6,6 +6,7 @@ import { decideWithThresholds, playgroundScenarios, summarizeOutcomes, threshold
 import { ContentModerationPage } from './moderation.js';
 import { ToolSafetyPage } from './tool-safety-page.js';
 import { PiiPhiGuardrailsPage } from './pii-phi-guardrails.js';
+import { DecisionPipelinePage } from './decision-pipeline-page.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -28,6 +29,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   if (path === '/tool-safety') return <ToolSafetyPage />;
   if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
   if (path === '/pii-phi-guardrails') return <PiiPhiGuardrailsPage />;
+  if (path === '/decision-pipeline') return <DecisionPipelinePage mode={mode} />;
   const [ticket, setTicket] = useState(sampleTicket);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
@@ -65,6 +67,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
           <a href="#confidence-playground" data-testid="nav-confidence-playground" className="hover:text-brand">Confidence playground</a>
           <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
+          <a href="/decision-pipeline" data-testid="decision-pipeline-nav" className="hover:text-brand">Decision receipts</a>
           <a href="/pii-phi-guardrails" data-testid="nav-pii-phi-guardrails" className="hover:text-brand">PII/PHI guardrails</a>
           <a href="/jev-agent" data-testid="jev-agent__nav-link" className="hover:text-brand">Jev consulting agent</a>
         </nav>
