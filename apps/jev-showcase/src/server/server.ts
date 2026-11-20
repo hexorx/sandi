@@ -10,6 +10,7 @@ import { triageTicket } from './triage.js';
 import { runModeration, ModerationError } from './moderation.js';
 import { runGuardrails, type GuardrailPolicy } from './pii-phi.js';
 import type { DecisionEngine, DecisionResult, EngineRun, EngineSelection } from '../decision-engine-contract.js';
+import { createJevClientFromEnvironment, runJevAgent } from './jev-agent.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -85,6 +86,31 @@ function createModerationClient(environment: NodeJS.ProcessEnv) {
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/jev-agent/run') {
+    let body: unknown;
+    try {
+      body = await readJson(request);
+    } catch {
+      sendJson(response, 400, { error: 'Provide a valid JSON task and action.' });
+      return;
+    }
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
+      return;
+    }
+    const input = body as { task?: unknown; action?: unknown };
+    if (typeof input.task !== 'string' || typeof input.action !== 'string' || !input.task.trim() || !input.action.trim() || input.task.length > 1000 || input.action.length > 1000) {
+      sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
+      return;
+    }
+    try {
+      const result = await runJevAgent({ task: input.task.trim(), action: input.action.trim(), jev: createJevClientFromEnvironment(environment), environment });
+      sendJson(response, 200, result);
+    } catch {
+      sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
+    }
+    return;
+  }
   if (requestUrl.pathname === '/api/tool-safety/evaluate') {
     if (request.method !== 'POST') {
       sendJson(response, 405, { error: 'Method not allowed' });
@@ -173,7 +199,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     }
     return;
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run'))) {
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
