@@ -66,6 +66,23 @@ describe('jev showcase server', () => {
     expect(JSON.stringify(payload)).not.toContain('harmful synthetic request');
   });
 
+  it('returns only receipts created by the current pipeline request', async () => {
+    const baseUrl = await listen();
+    const firstResponse = await fetch(`${baseUrl}/api/decision-pipeline/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ item: 'A harmful synthetic request', threshold: 0.7 }),
+    });
+    const first = await firstResponse.json() as { receipts: Array<{ id: string }> };
+    const secondResponse = await fetch(`${baseUrl}/api/decision-pipeline/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ item: 'A routine synthetic request', threshold: 0.7 }),
+    });
+    const second = await secondResponse.json() as { receipts: Array<{ id: string }> };
+
+    expect(second.receipts).toHaveLength(3);
+    expect(second.receipts.some((receipt) => first.receipts.some((previous) => previous.id === receipt.id))).toBe(false);
+  });
+
   it('returns a clear live-mode error rather than pretending to run the pipeline', async () => {
     activeServer = createServer({ JEV_MODE: 'live', TYPESAFE_API_KEY: 'configured' });
     await new Promise<void>((resolve) => activeServer?.listen(0, '127.0.0.1', resolve));
