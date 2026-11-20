@@ -18,4 +18,12 @@ describe('landing page', () => {
     render(<App mode="live" />);
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');
   });
+
+  it('links from the home screen to the content moderation route', () => {
+    render(<App mode="mock" path="/" />);
+    expect(screen.getByTestId('home__content-moderation-link')).toHaveAttribute('href', '/content-moderation');
+    cleanup();
+    render(<App mode="mock" path="/content-moderation" />);
+    expect(screen.getByRole('heading', { name: 'Content moderation' })).toBeInTheDocument();
+  });
 });

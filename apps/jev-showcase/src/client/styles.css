@@ -7,12 +7,36 @@
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --color-canvas: 245 247 251;
+  --color-canvas: 246 247 251;
   --color-surface: 255 255 255;
-  --color-ink: 22 32 51;
-  --color-muted: 100 116 139;
-  --color-line: 226 232 240;
-  --color-brand: 37 99 235;
+  --color-elevated: 240 242 248;
+  --color-ink: 24 32 51;
+  --color-muted: 88 100 122;
+  --color-line: 220 225 235;
+  --color-brand: 81 70 216;
+  --color-brand-strong: 64 53 189;
+  --color-brand-soft: 238 237 255;
+  --color-positive: 22 115 74;
+  --color-caution: 138 90 0;
+  --color-negative: 180 35 54;
+  --color-info: 36 99 166;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-canvas: 16 19 27;
+  --color-surface: 24 29 40;
+  --color-elevated: 34 41 56;
+  --color-ink: 242 244 250;
+  --color-muted: 166 176 194;
+  --color-line: 48 57 74;
+  --color-brand: 166 155 255;
+  --color-brand-strong: 192 184 255;
+  --color-brand-soft: 41 38 68;
+  --color-positive: 101 214 160;
+  --color-caution: 243 197 107;
+  --color-negative: 255 130 144;
+  --color-info: 120 184 255;
 }
 
 * { box-sizing: border-box; }

@@ -8,5 +8,5 @@
     "types": ["vite/client"],
     "noEmit": true
   },
-  "include": ["src/client", "vite.config.ts", "tailwind.config.ts"]
+  "include": ["src/client", "src/moderation-*.ts", "vite.config.ts", "tailwind.config.ts"]
 }

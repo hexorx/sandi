@@ -1,18 +1,22 @@
 import React from 'react';
+import { ContentModerationPage } from './moderation.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
 interface AppProps {
   mode: RuntimeMode;
+  path?: string;
 }
 
 const useCases = [
   { number: '01', title: 'A clear recommendation', text: 'Turn a question into a decision you can explain.' },
   { number: '02', title: 'Choices with context', text: 'Compare options against the criteria that matter.' },
-  { number: '03', title: 'A confidence score', text: 'See how strongly the evidence supports an outcome.' },
+  { number: '03', title: 'Content moderation', text: 'Apply a policy consistently, with a clear human-review band.' },
 ];
 
-export function App({ mode }: AppProps) {
+export function App({ mode, path = window.location.pathname }: AppProps) {
+  if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
@@ -21,6 +25,7 @@ export function App({ mode }: AppProps) {
           <span>Jev <span className="font-normal text-muted">Showcase</span></span>
         </a>
         <span
+          data-testid="app__mode-badge"
           className={`inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 text-xs font-semibold tracking-wide ${
             mode === 'live' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-line bg-surface text-muted'
           }`}
@@ -55,9 +60,9 @@ export function App({ mode }: AppProps) {
               <span className="font-mono text-xs text-brand">{item.number}</span>
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
-              <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">
-                Example coming soon <span aria-hidden="true">↗</span>
-              </span>
+              {item.number === '03' ? <a href="/content-moderation" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__content-moderation-link">
+                Open demo <span aria-hidden="true">↗</span>
+              </a> : <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Example coming soon <span aria-hidden="true">↗</span></span>}
             </article>
           ))}
         </section>
