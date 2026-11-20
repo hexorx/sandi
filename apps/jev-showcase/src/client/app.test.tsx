@@ -35,7 +35,7 @@ describe('landing page', () => {
     expect(screen.getByTestId('decision-pipeline-nav')).toHaveAttribute('href', '/decision-pipeline');
     cleanup();
     render(<App mode="mock" path="/decision-pipeline" />);
-    expect(screen.getByRole('heading', { name: 'Decision pipeline receipts' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Decision pipeline' })).toBeInTheDocument();
   });
 
   it('links the Jev agent use case from the home page', () => {
