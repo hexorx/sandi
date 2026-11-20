@@ -5,6 +5,7 @@ import thresholdCode from './threshold.ts?raw';
 import { decideWithThresholds, playgroundScenarios, summarizeOutcomes, thresholdSamples } from './threshold.js';
 import { ContentModerationPage } from './moderation.js';
 import { ToolSafetyPage } from './tool-safety-page.js';
+import { PiiPhiGuardrailsPage } from './pii-phi-guardrails.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -26,6 +27,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   if (path === '/jev-agent') return <JevAgentPage mode={mode} />;
   if (path === '/tool-safety') return <ToolSafetyPage />;
   if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
+  if (path === '/pii-phi-guardrails') return <PiiPhiGuardrailsPage />;
   const [ticket, setTicket] = useState(sampleTicket);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
@@ -63,6 +65,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
           <a href="#confidence-playground" data-testid="nav-confidence-playground" className="hover:text-brand">Confidence playground</a>
           <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
+          <a href="/pii-phi-guardrails" data-testid="nav-pii-phi-guardrails" className="hover:text-brand">PII/PHI guardrails</a>
           <a href="/jev-agent" data-testid="jev-agent__nav-link" className="hover:text-brand">Jev consulting agent</a>
         </nav>
         <span
@@ -179,12 +182,12 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
         </section>
 
         <section id="examples" className="mt-20 grid gap-4 md:grid-cols-3" aria-label="Example decisions">
-          {useCases.map((item) => (
+          {[...useCases, { number: '07', title: 'PII/PHI guardrails', text: 'Detect synthetic sensitive patterns and block or redact before a mock agent.' }].map((item) => (
             <article key={item.number} className="rounded-card border border-line bg-surface p-6 shadow-card">
               <span className="font-mono text-xs text-brand">{item.number}</span>
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
-              {item.number === '03' ? <a href="/content-moderation" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__content-moderation-link">
+              {item.number === '07' ? <a href="/pii-phi-guardrails" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__pii-phi-guardrails-link">Open demo <span aria-hidden="true">↗</span></a> : item.number === '03' ? <a href="/content-moderation" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__content-moderation-link">
                 Open demo <span aria-hidden="true">↗</span>
               </a> : item.number === '05' ? <a href="/jev-agent" data-testid="jev-agent__home-link" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline">
                 Open demo <span aria-hidden="true">↗</span>

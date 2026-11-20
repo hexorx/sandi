@@ -8,6 +8,8 @@ import { findToolCall } from './tool-calls.js';
 import { decideToolCall } from './tool-safety.js';
 import { triageTicket } from './triage.js';
 import { runModeration, ModerationError } from './moderation.js';
+import { runGuardrails, type GuardrailPolicy } from './pii-phi.js';
+import type { DecisionEngine, DecisionResult, EngineRun, EngineSelection } from '../decision-engine-contract.js';
 import { createJevClientFromEnvironment, runJevAgent } from './jev-agent.js';
 
 export type RuntimeMode = 'mock' | 'live';
@@ -151,7 +153,53 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     }
     return;
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
+  if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run') {
+    const requestId = randomUUID();
+    try {
+      const body = await readJson(request);
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
+      const input = body as { text?: unknown; policy?: unknown; engine?: unknown; compare?: unknown };
+      if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 5000) throw new TypeError('Text must be between 1 and 5000 characters.');
+      if (input.policy !== 'strict' && input.policy !== 'redact-medium') throw new TypeError('Choose a supported guardrail policy.');
+      if (input.engine !== 'jev' && input.engine !== 'decider') throw new TypeError('Choose Jev or Decider.');
+      if (typeof input.compare !== 'boolean') throw new TypeError('Choose single or compare mode.');
+      let result: ReturnType<typeof runGuardrails>;
+      try {
+        result = runGuardrails(input.text, input.policy as GuardrailPolicy);
+      } catch {
+        sendJson(response, 502, { requestId, error: { code: 'DETECTOR_ERROR', message: 'Detection unavailable. Nothing was sent to the mock agent.' } });
+        return;
+      }
+      const agentInput = result.action === 'allow' ? input.text : result.action === 'redact' ? result.redactedText : undefined;
+      const received = agentInput === undefined ? null : { engine: input.engine, mode: 'mock' as const, text: agentInput, response: `Mock ${input.engine === 'jev' ? 'Jev' : 'Decider'} agent received the guarded sample.` };
+      const mockEngine: DecisionEngine = {
+        id: 'mock',
+        async decide(): Promise<DecisionResult> {
+          return { answer: { guardrails: result, received }, confidence: {}, explanation: 'Local mock simulation only.' };
+        },
+      };
+      const run = async (requestedEngine: EngineSelection): Promise<EngineRun> => ({
+        ...(await mockEngine.decide({ useCase: 'pii-phi-guardrails', payload: { action: result.action } })),
+        requestedEngine,
+        engine: 'mock',
+        latencyMs: 0,
+        fallback: { reason: 'unconfigured' },
+      });
+      const execution = input.compare
+        ? { mode: 'compare' as const, results: Object.fromEntries(await Promise.all((['jev', 'decider'] as const).map(async (requestedEngine) => [requestedEngine, await run(requestedEngine)]))) }
+        : { mode: 'single' as const, result: await run(input.engine as EngineSelection) };
+      sendJson(response, 200, {
+        requestId,
+        mode: 'mock',
+        execution,
+      });
+    } catch (error) {
+      const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
+      sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+    }
+    return;
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
