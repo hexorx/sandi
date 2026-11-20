@@ -28,6 +28,8 @@ jobs:
       - run: env -u TYPESAFE_API_KEY pnpm typecheck
       - run: env -u TYPESAFE_API_KEY pnpm test
       - run: env -u TYPESAFE_API_KEY pnpm build
+      - name: Build Jev showcase Docker image
+        run: docker build -f apps/jev-showcase/Dockerfile -t sandi-jev-showcase:ci .
 
   secret-scan:
     runs-on: ubuntu-latest
