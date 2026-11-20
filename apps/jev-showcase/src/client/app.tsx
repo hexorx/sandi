@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { JevAgentPage } from './jev-agent-page.js';
 import triageCode from '../server/triage.ts?raw';
+import thresholdCode from './threshold.ts?raw';
+import { decideWithThresholds, playgroundScenarios, summarizeOutcomes, thresholdSamples } from './threshold.js';
 import { ContentModerationPage } from './moderation.js';
 import { ToolSafetyPage } from './tool-safety-page.js';
 
@@ -28,6 +30,10 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [scenario, setScenario] = useState<keyof typeof playgroundScenarios>('tool-safety');
+  const [confidence, setConfidence] = useState(62);
+  const [allowThreshold, setAllowThreshold] = useState(80);
+  const [blockThreshold, setBlockThreshold] = useState(35);
   async function triage() {
     setLoading(true); setError(''); setResult(null);
     try {
@@ -41,6 +47,10 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   }
   const answer = (key: string) => result?.[key] as { value: string; probabilities: Record<string, number> } | undefined;
   const percent = (value: number) => `${Math.round(value * 100)}%`;
+  const selectedScenario = playgroundScenarios[scenario];
+  const scenarioConfidence = Math.max(...Object.values(selectedScenario.probabilities));
+  const decision = decideWithThresholds(confidence / 100, allowThreshold / 100, blockThreshold / 100);
+  const summary = summarizeOutcomes(thresholdSamples, allowThreshold / 100, blockThreshold / 100);
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
@@ -51,6 +61,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
         <nav aria-label="Main navigation" className="hidden items-center gap-6 text-sm text-muted sm:flex">
           <a href="/tool-safety" className="hover:text-brand">Tool safety</a>
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
+          <a href="#confidence-playground" data-testid="nav-confidence-playground" className="hover:text-brand">Confidence playground</a>
           <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
           <a href="/jev-agent" data-testid="jev-agent__nav-link" className="hover:text-brand">Jev consulting agent</a>
         </nav>
@@ -111,6 +122,59 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <div className="overflow-hidden rounded-card border border-line bg-slate-950 text-slate-100 shadow-card">
             <div className="border-b border-slate-800 px-5 py-4"><p className="text-sm font-semibold">Routing logic</p><p className="mt-1 text-xs text-slate-400">Source: apps/jev-showcase/src/server/triage.ts</p></div>
             <pre data-testid="triage-code" className="max-h-[28rem] overflow-auto p-5 text-xs leading-6"><code>{triageCode}</code></pre>
+          </div>
+        </section>
+
+        <section id="confidence-playground" className="mt-20" aria-labelledby="threshold-title">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand">Use case 06 · Decision quality</p>
+            <h2 id="threshold-title" className="mt-3 text-3xl font-semibold tracking-tight">Confidence &amp; threshold playground</h2>
+            <p className="mt-3 text-sm leading-6 text-muted">Explore how confidence cutoffs shape a decision. Replay scenarios are synthetic and run locally in mock mode.</p>
+          </div>
+          <div className="mt-7 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-card border border-line bg-surface p-6 shadow-card sm:p-8">
+              <label htmlFor="threshold-scenario" className="block text-sm font-medium">Scenario</label>
+              <select id="threshold-scenario" data-testid="threshold-scenario" value={scenario} onChange={(event) => {
+                const next = event.target.value as keyof typeof playgroundScenarios;
+                setScenario(next);
+                setConfidence(Math.round(Math.max(...Object.values(playgroundScenarios[next].probabilities)) * 100));
+              }} className="mt-2 w-full rounded-xl border border-line bg-white p-3 text-sm">
+                {Object.entries(playgroundScenarios).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}
+              </select>
+              <div className="mt-5 rounded-xl bg-canvas p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">{selectedScenario.question}</p>
+                <p className="mt-2 text-sm leading-6">{selectedScenario.description}</p>
+              </div>
+              <div className="mt-6" data-testid="threshold-distribution">
+                <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Probability distribution</h3><span className="text-xs text-muted">scenario output</span></div>
+                <div className="mt-3 space-y-3">
+                  {Object.entries(selectedScenario.probabilities).map(([label, value]) => <div key={label} className="grid grid-cols-[6.5rem_1fr_3rem] items-center gap-3 text-xs"><span>{label}</span><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand" style={{ width: percent(value) }} /></div><strong className="text-right">{percent(value)}</strong></div>)}
+                </div>
+              </div>
+              <label htmlFor="threshold-confidence" className="mt-7 flex items-center justify-between text-sm font-medium">Selected confidence <span data-testid="confidence-value" className="font-mono text-brand">{confidence}%</span></label>
+              <input id="threshold-confidence" data-testid="threshold-confidence" type="range" min="0" max="100" value={confidence} onChange={(event) => setConfidence(Number(event.target.value))} className="mt-3 w-full accent-blue-600" />
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <label className="text-sm font-medium">Allow at or above <span className="font-mono text-brand">{allowThreshold}%</span><input aria-label="Allow threshold" data-testid="allow-threshold" type="range" min="51" max="100" value={allowThreshold} onChange={(event) => setAllowThreshold(Math.max(Number(event.target.value), blockThreshold + 1))} className="mt-3 block w-full accent-blue-600" /></label>
+                <label className="text-sm font-medium">Block below <span className="font-mono text-brand">{blockThreshold}%</span><input aria-label="Block threshold" data-testid="block-threshold" type="range" min="0" max="50" value={blockThreshold} onChange={(event) => setBlockThreshold(Math.min(Number(event.target.value), allowThreshold - 1))} className="mt-3 block w-full accent-blue-600" /></label>
+              </div>
+              <div data-testid="threshold-decision" className={`mt-6 rounded-xl border p-4 ${decision === 'allow' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : decision === 'block' ? 'border-red-200 bg-red-50 text-red-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                <p className="text-xs font-semibold uppercase tracking-wide">Decision</p><p className="mt-1 text-xl font-semibold capitalize">{decision}</p>
+                <p className="mt-1 text-sm">{decision === 'allow' ? 'Confidence meets the allow cutoff.' : decision === 'block' ? 'Confidence is below the block cutoff.' : 'Send this case for human review.'}</p>
+              </div>
+              <p className="mt-2 sr-only">Scenario confidence is {Math.round(scenarioConfidence * 100)}%.</p>
+            </div>
+            <div className="space-y-6">
+              <div className="rounded-card border border-line bg-surface p-6 shadow-card" data-testid="threshold-summary">
+                <h3 className="text-lg font-semibold">Sample set summary</h3><p className="mt-1 text-sm text-muted">Six synthetic cases · operational outcome vs. expected safe or unsafe</p>
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {Object.entries({ 'Correct allow': summary.trueAllow, 'False allow': summary.falseAllow, 'Correct block': summary.trueBlock, 'False block': summary.falseBlock, Escalated: summary.escalated }).map(([label, count]) => <div key={label} className="rounded-xl bg-canvas p-3"><span className="block text-xs text-muted">{label}</span><strong className="mt-1 block text-2xl">{count}</strong></div>)}
+                </div>
+              </div>
+              <div className="overflow-hidden rounded-card border border-line bg-slate-950 text-slate-100 shadow-card">
+                <div className="border-b border-slate-800 px-5 py-4"><p className="text-sm font-semibold">Threshold logic</p><p className="mt-1 text-xs text-slate-400">Source: apps/jev-showcase/src/client/threshold.ts</p></div>
+                <pre data-testid="threshold-code" className="max-h-[24rem] overflow-auto p-5 text-xs leading-6"><code>{thresholdCode}</code></pre>
+              </div>
+            </div>
           </div>
         </section>
 
