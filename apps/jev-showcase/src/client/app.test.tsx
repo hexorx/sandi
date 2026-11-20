@@ -18,4 +18,9 @@ describe('landing page', () => {
     render(<App mode="live" />);
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');
   });
+
+  it('links the decision receipts use case from the showcase navigation', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByTestId('decision-pipeline-nav')).toHaveAttribute('href', '/decision-pipeline');
+  });
 });

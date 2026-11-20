@@ -2,6 +2,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runDecisionPipeline } from './decision-pipeline.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -57,29 +58,68 @@ function serveClient(request: IncomingMessage, response: ServerResponse, pathnam
   createReadStream(resolvedFilePath).pipe(response);
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): void {
-  const requestUrl = new URL(request.url ?? '/', 'http://localhost');
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    sendJson(response, 405, { error: 'Method not allowed' });
-    return;
+async function readJson(request: IncomingMessage): Promise<unknown> {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk.toString();
+    if (body.length > 16_384) throw new Error('Request is too large.');
   }
+  return JSON.parse(body) as unknown;
+}
+
+async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
+  const requestUrl = new URL(request.url ?? '/', 'http://localhost');
   if (requestUrl.pathname === '/healthz') {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
     sendJson(response, 200, { status: 'ok' });
     return;
   }
   if (requestUrl.pathname === '/api/mode') {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
     sendJson(response, 200, { mode: getRuntimeMode(environment) });
+    return;
+  }
+  if (requestUrl.pathname === '/api/decision-pipeline/run') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (getRuntimeMode(environment) === 'live') {
+      sendJson(response, 503, { error: 'Live decision pipeline is not configured. Switch to mock mode or configure the pipeline provider.' });
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      if (!body || typeof body !== 'object' || !('item' in body) || !('threshold' in body)) {
+        sendJson(response, 400, { error: 'Provide an item and threshold.' });
+        return;
+      }
+      const result = await runDecisionPipeline({ item: body.item as string, threshold: body.threshold as number });
+      sendJson(response, 200, { ...result, mode: 'mock' });
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'Pipeline request is invalid.' });
+    }
     return;
   }
   if (requestUrl.pathname.startsWith('/api/')) {
     sendJson(response, 404, { error: 'Not found' });
     return;
   }
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    sendJson(response, 405, { error: 'Method not allowed' });
+    return;
+  }
   serveClient(request, response, requestUrl.pathname);
 }
 
 export function createServer(environment: NodeJS.ProcessEnv = process.env): Server {
-  return createHttpServer((request, response) => handleRequest(request, response, environment));
+  return createHttpServer((request, response) => { void handleRequest(request, response, environment); });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

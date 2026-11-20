@@ -1,4 +1,5 @@
 import React from 'react';
+import { DecisionPipelinePage } from './decision-pipeline-page.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -13,6 +14,7 @@ const useCases = [
 ];
 
 export function App({ mode }: AppProps) {
+  if (window.location.pathname === '/decision-pipeline') return <DecisionPipelinePage mode={mode} />;
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 lg:px-10">
@@ -50,14 +52,12 @@ export function App({ mode }: AppProps) {
         </section>
 
         <section id="examples" className="mt-20 grid gap-4 md:grid-cols-3" aria-label="Example decisions">
-          {useCases.map((item) => (
+          {[...useCases, { number: '04', title: 'Decision receipts', text: 'Follow a pipeline and inspect a receipt for every decision.' }].map((item) => (
             <article key={item.number} className="rounded-card border border-line bg-surface p-6 shadow-card">
               <span className="font-mono text-xs text-brand">{item.number}</span>
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
-              <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">
-                Example coming soon <span aria-hidden="true">↗</span>
-              </span>
+              {item.number === '04' ? <a href="/decision-pipeline" data-testid="decision-pipeline-nav" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Explore the pipeline <span aria-hidden="true">↗</span></a> : <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Example coming soon <span aria-hidden="true">↗</span></span>}
             </article>
           ))}
         </section>
