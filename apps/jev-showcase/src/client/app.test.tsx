@@ -8,6 +8,17 @@ import { App } from './app.js';
 afterEach(() => cleanup());
 
 describe('landing page', () => {
+  it('links to the tool safety use case from navigation', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByRole('link', { name: /tool safety/i })).toHaveAttribute('href', '/tool-safety');
+  });
+
+  it('renders the tool safety page at its route', () => {
+    render(<App mode="mock" path="/tool-safety" />);
+    expect(screen.getByRole('heading', { name: /should this tool call run/i })).toBeTruthy();
+    expect(screen.getByTestId('tool-safety-code').textContent).toContain('createToolSafetyRequest');
+  });
+
   it('shows the showcase introduction and mock mode badge', () => {
     render(<App mode="mock" />);
     expect(screen.getByRole('heading', { name: /decisions, made clear/i })).toBeTruthy();
@@ -17,6 +28,19 @@ describe('landing page', () => {
   it('shows a live mode badge when the server reports live mode', () => {
     render(<App mode="live" />);
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');
+  });
+
+  it('links the Jev agent use case from the home page', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByTestId('jev-agent__nav-link')).toHaveAttribute('href', '/jev-agent');
+  });
+
+  it('links from the home screen to the content moderation route', () => {
+    render(<App mode="mock" path="/" />);
+    expect(screen.getByTestId('home__content-moderation-link')).toHaveAttribute('href', '/content-moderation');
+    cleanup();
+    render(<App mode="mock" path="/content-moderation" />);
+    expect(screen.getByRole('heading', { name: 'Content moderation' })).toBeInTheDocument();
   });
 
   it('shows the triage page, probabilities, and source code', async () => {
