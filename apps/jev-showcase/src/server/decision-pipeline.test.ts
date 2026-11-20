@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runDecisionPipeline } from './decision-pipeline.js';
+import { getDecisionReceiptLog, runDecisionPipeline } from './decision-pipeline.js';
 
 describe('decision pipeline', () => {
   it('records a receipt for every gate, including skipped gates', async () => {
@@ -28,5 +28,12 @@ describe('decision pipeline', () => {
     expect(result.receipts[0]?.stage).toBe('Item 1 · safety');
     expect(result.receipts[3]?.stage).toBe('Item 2 · safety');
     expect(result.finalAction).toBe('block');
+  });
+
+  it('keeps receipts in the in-memory log across pipeline runs', async () => {
+    const before = getDecisionReceiptLog().length;
+    await runDecisionPipeline({ item: 'first log item', threshold: 0.7 });
+    await runDecisionPipeline({ item: 'second log item', threshold: 0.7 });
+    expect(getDecisionReceiptLog().length).toBe(before + 6);
   });
 });

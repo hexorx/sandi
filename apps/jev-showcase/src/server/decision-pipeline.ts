@@ -22,6 +22,12 @@ export interface DecisionPipelineInput {
   threshold: number;
 }
 
+const decisionReceiptLog: DecisionReceipt[] = [];
+
+export function getDecisionReceiptLog(): readonly DecisionReceipt[] {
+  return decisionReceiptLog;
+}
+
 function hash(value: string): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
@@ -83,5 +89,7 @@ export async function runDecisionPipeline(input: DecisionPipelineInput): Promise
   })));
   const finalAction = results.some((result) => result.finalAction === 'block') ? 'block'
     : results.some((result) => result.finalAction === 'review') ? 'review' : 'approved-queue';
+  decisionReceiptLog.push(...receipts);
+  if (decisionReceiptLog.length > 1_000) decisionReceiptLog.splice(0, decisionReceiptLog.length - 1_000);
   return { useCase: 'decision-pipeline', finalAction, receipts };
 }

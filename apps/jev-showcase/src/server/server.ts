@@ -2,7 +2,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runDecisionPipeline } from './decision-pipeline.js';
+import { getDecisionReceiptLog, runDecisionPipeline } from './decision-pipeline.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -101,7 +101,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
         return;
       }
       const result = await runDecisionPipeline({ item: body.item as string, threshold: body.threshold as number });
-      sendJson(response, 200, { ...result, mode: 'mock' });
+      sendJson(response, 200, { ...result, receipts: getDecisionReceiptLog(), mode: 'mock' });
     } catch (error) {
       sendJson(response, 400, { error: error instanceof Error ? error.message : 'Pipeline request is invalid.' });
     }
