@@ -16,10 +16,13 @@ interface AppProps {
 }
 
 const useCases = [
-  { number: '01', title: 'Tool safety', text: 'Gate tool calls with an explainable risk decision.' },
-  { number: '02', title: 'Support ticket triage', text: 'Route tickets with confidence and human review.' },
-  { number: '03', title: 'Content moderation', text: 'Apply a policy consistently, with a clear human-review band.' },
-  { number: '05', title: 'Jev consulting agent', text: 'Let an agent check with Jev before it acts.' },
+  { number: '01', title: 'Tool-call safety', text: 'Gate proposed tool calls with an explainable risk decision.', href: '/tool-safety', testId: 'home__tool-safety-link' },
+  { number: '02', title: 'Support ticket triage', text: 'Route tickets with clear confidence and a human-review path.', href: '#support-triage', testId: 'home__ticket-triage-link' },
+  { number: '03', title: 'Content moderation', text: 'Apply a policy consistently, with a clear review band.', href: '/content-moderation', testId: 'home__content-moderation-link' },
+  { number: '04', title: 'Decision receipts', text: 'Inspect every decision and see why later gates were skipped.', href: '/decision-pipeline', testId: 'home__decision-pipeline-link' },
+  { number: '05', title: 'Jev consulting agent', text: 'Let an agent check with Jev before it acts.', href: '/jev-agent', testId: 'jev-agent__home-link' },
+  { number: '06', title: 'Confidence playground', text: 'Adjust confidence thresholds while the evidence stays fixed.', href: '#confidence-playground', testId: 'home__threshold-playground-link' },
+  { number: '07', title: 'PII/PHI guardrails', text: 'Inspect synthetic sensitive patterns before a mock agent.', href: '/pii-phi-guardrails', testId: 'home__pii-phi-guardrails-link' },
 ];
 
 const sampleTicket = 'My headphones arrived with a cracked ear cup, and I need a replacement before my trip next week.';
@@ -31,6 +34,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   if (path === '/pii-phi-guardrails') return <PiiPhiGuardrailsPage />;
   if (path === '/decision-pipeline') return <DecisionPipelinePage mode={mode} />;
   const [ticket, setTicket] = useState(sampleTicket);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -62,7 +66,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <span className="grid size-9 place-items-center rounded-xl bg-brand text-sm font-bold text-white">J</span>
           <span>Jev <span className="font-normal text-muted">Showcase</span></span>
         </a>
-        <nav aria-label="Main navigation" className="hidden items-center gap-6 text-sm text-muted sm:flex">
+        <nav aria-label="Main navigation" className="hidden items-center gap-5 text-sm text-muted xl:flex">
           <a href="/tool-safety" className="hover:text-brand">Tool safety</a>
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
           <a href="#confidence-playground" data-testid="nav-confidence-playground" className="hover:text-brand">Confidence playground</a>
@@ -71,6 +75,17 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <a href="/pii-phi-guardrails" data-testid="nav-pii-phi-guardrails" className="hover:text-brand">PII/PHI guardrails</a>
           <a href="/jev-agent" data-testid="jev-agent__nav-link" className="hover:text-brand">Jev consulting agent</a>
         </nav>
+        <button
+          type="button"
+          className="inline-flex size-10 items-center justify-center rounded-xl border border-line bg-surface text-ink transition hover:bg-elevated focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25 xl:hidden"
+          aria-label={mobileNavigationOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={mobileNavigationOpen}
+          aria-controls="mobile-navigation"
+          data-testid="app__mobile-menu"
+          onClick={() => setMobileNavigationOpen((open) => !open)}
+        >
+          <span aria-hidden="true" className="text-lg leading-none">{mobileNavigationOpen ? '×' : '☰'}</span>
+        </button>
         <span
           className={`inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 text-xs font-semibold tracking-wide ${
             mode === 'live' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-line bg-surface text-muted'
@@ -81,6 +96,23 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           {mode.toUpperCase()}
         </span>
       </header>
+
+      {mobileNavigationOpen && <nav
+        id="mobile-navigation"
+        aria-label="Mobile navigation"
+        data-testid="app__mobile-navigation"
+        className="mx-auto grid max-w-6xl gap-1 border-y border-line bg-surface px-6 py-3 text-sm text-muted sm:grid-cols-2 lg:px-10 xl:hidden"
+      >
+        {[
+          ['/tool-safety', 'Tool safety'],
+          ['#support-triage', 'Support ticket triage'],
+          ['#confidence-playground', 'Confidence playground'],
+          ['/content-moderation', 'Content moderation'],
+          ['/decision-pipeline', 'Decision receipts'],
+          ['/pii-phi-guardrails', 'PII/PHI guardrails'],
+          ['/jev-agent', 'Jev consulting agent'],
+        ].map(([href, label]) => <a key={href} href={href} onClick={() => setMobileNavigationOpen(false)} className="rounded-lg px-3 py-2.5 transition hover:bg-elevated hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25">{label}</a>)}
+      </nav>}
 
       <main className="mx-auto max-w-6xl px-6 pb-20 pt-12 lg:px-10 lg:pt-20">
         <section className="max-w-3xl">
@@ -93,7 +125,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
             Start with a guided example and see every step along the way.
           </p>
           <a
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200"
+            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25"
             href="#support-triage"
           >
             Support ticket triage <span aria-hidden="true">→</span>
@@ -106,8 +138,8 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
             <h2 id="triage-title" className="mt-3 text-2xl font-semibold tracking-tight">Support ticket triage</h2>
             <p className="mt-2 text-sm leading-6 text-muted">Jev classifies the issue, scores urgency, and picks the best team. Uncertain decisions go to a person.</p>
             <label htmlFor="ticket" className="mt-6 block text-sm font-medium">Ticket description</label>
-            <textarea id="ticket" data-testid="ticket-input" value={ticket} onChange={(event) => setTicket(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-line bg-white p-3 text-sm leading-6 focus:outline-none focus:ring-4 focus:ring-blue-100" />
-            <button type="button" onClick={() => void triage()} disabled={loading || !ticket.trim()} className="mt-4 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50" data-testid="triage-button">
+            <textarea id="ticket" data-testid="ticket-input" value={ticket} onChange={(event) => setTicket(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-line bg-elevated p-3 text-sm leading-6" />
+            <button type="button" onClick={() => void triage()} disabled={loading || !ticket.trim()} className="mt-4 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25 disabled:opacity-50" data-testid="triage-button">
               {loading ? 'Triaging…' : 'Triage ticket'}
             </button>
             {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
@@ -144,7 +176,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
                 const next = event.target.value as keyof typeof playgroundScenarios;
                 setScenario(next);
                 setConfidence(Math.round(Math.max(...Object.values(playgroundScenarios[next].probabilities)) * 100));
-              }} className="mt-2 w-full rounded-xl border border-line bg-white p-3 text-sm">
+              }} className="mt-2 w-full rounded-xl border border-line bg-elevated p-3 text-sm">
                 {Object.entries(playgroundScenarios).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}
               </select>
               <div className="mt-5 rounded-xl bg-canvas p-4">
@@ -184,17 +216,15 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           </div>
         </section>
 
-        <section id="examples" className="mt-20 grid gap-4 md:grid-cols-3" aria-label="Example decisions">
-          {[...useCases, { number: '07', title: 'PII/PHI guardrails', text: 'Detect synthetic sensitive patterns and block or redact before a mock agent.' }].map((item) => (
-            <article key={item.number} className="rounded-card border border-line bg-surface p-6 shadow-card">
-              <span className="font-mono text-xs text-brand">{item.number}</span>
-              <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
-              {item.number === '07' ? <a href="/pii-phi-guardrails" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__pii-phi-guardrails-link">Open demo <span aria-hidden="true">↗</span></a> : item.number === '03' ? <a href="/content-moderation" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__content-moderation-link">
-                Open demo <span aria-hidden="true">↗</span>
-              </a> : item.number === '05' ? <a href="/jev-agent" data-testid="jev-agent__home-link" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline">
-                Open demo <span aria-hidden="true">↗</span>
-              </a> : <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Example coming soon <span aria-hidden="true">↗</span></span>}
+        <section id="examples" className="mt-20 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Example decisions">
+          {useCases.map((item) => (
+            <article key={item.number} className="group rounded-card border border-line bg-surface p-6 shadow-card">
+              <span className="font-mono text-xs font-semibold text-brand">{item.number}</span>
+              <h2 className="mt-6 text-lg font-semibold tracking-tight">{item.title}</h2>
+              <p className="mt-2 min-h-12 text-sm leading-6 text-muted">{item.text}</p>
+              <a href={item.href} data-testid={item.testId} className="mt-5 inline-flex items-center gap-2 rounded-lg text-sm font-semibold text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25">
+                Open demo <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">↗</span>
+              </a>
             </article>
           ))}
         </section>
