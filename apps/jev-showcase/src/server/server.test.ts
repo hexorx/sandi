@@ -51,6 +51,22 @@ describe('jev showcase server', () => {
     expect(response.headers.get('set-cookie')).toBeNull();
   });
 
+  it('triages a synthetic ticket offline and labels the response as mock', async () => {
+    const response = await fetch(`${await listen()}/api/triage`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: 'Package arrived damaged.' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ mode: 'mock', category: { probabilities: expect.any(Object) }, urgency: { probabilities: expect.any(Object) }, queue: { probabilities: expect.any(Object) } });
+  });
+
+  it('returns a clear validation error for an empty ticket', async () => {
+    const response = await fetch(`${await listen()}/api/triage`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: '  ' }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Enter a ticket description before triage.' });
+  });
+
   it('returns an offline moderation decision and mode metadata', async () => {
     activeServer = createServer({ NODE_ENV: 'test', JEV_MODE: 'live', TYPESAFE_API_KEY: 'test-only' });
     await new Promise<void>((resolve) => activeServer?.listen(0, '127.0.0.1', resolve));

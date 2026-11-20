@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createJevClient } from '@sandi/jev';
+import { triageTicket } from './triage.js';
 import { runModeration, ModerationError } from './moderation.js';
 
 export type RuntimeMode = 'mock' | 'live';
@@ -100,7 +101,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     }
     return;
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
@@ -110,6 +111,31 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
   }
   if (requestUrl.pathname === '/api/mode') {
     sendJson(response, 200, { mode: getRuntimeMode(environment) });
+    return;
+  }
+  if (requestUrl.pathname === '/api/triage') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (Buffer.concat(chunks).byteLength > 16_384) {
+        sendJson(response, 413, { error: 'Ticket description is too long.' });
+        return;
+      }
+      const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const ticket = typeof body === 'object' && body !== null && 'ticket' in body && typeof body.ticket === 'string' ? body.ticket : '';
+      const mode = getRuntimeMode(environment);
+      const client = createJevClient({ mode, apiKey: environment.TYPESAFE_API_KEY });
+      sendJson(response, 200, await triageTicket(ticket, client));
+    } catch (error) {
+      const message = error instanceof Error && error.message.startsWith('Enter a ticket')
+        ? error.message
+        : 'Unable to triage ticket. Please retry or assign it manually.';
+      sendJson(response, 400, { error: message });
+    }
     return;
   }
   if (requestUrl.pathname.startsWith('/api/')) {
