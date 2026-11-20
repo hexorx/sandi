@@ -11,6 +11,7 @@ import { runModeration, ModerationError } from './moderation.js';
 import { runGuardrails, type GuardrailPolicy } from './pii-phi.js';
 import type { DecisionEngine, DecisionResult, EngineRun, EngineSelection } from '../decision-engine-contract.js';
 import { createJevClientFromEnvironment, runJevAgent } from './jev-agent.js';
+import { runDecisionPipeline } from './decision-pipeline.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -199,7 +200,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     }
     return;
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/decision-pipeline/run' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
@@ -209,6 +210,28 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
   }
   if (requestUrl.pathname === '/api/mode') {
     sendJson(response, 200, { mode: getRuntimeMode(environment) });
+    return;
+  }
+  if (requestUrl.pathname === '/api/decision-pipeline/run') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (getRuntimeMode(environment) === 'live') {
+      sendJson(response, 503, { error: 'Live decision pipeline is not configured. Switch to mock mode or configure the pipeline provider.' });
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Provide an item and threshold.');
+      const input = body as { item?: unknown; threshold?: unknown };
+      if (typeof input.item !== 'string' || typeof input.threshold !== 'number') throw new TypeError('Provide an item and threshold.');
+      const result = await runDecisionPipeline({ item: input.item, threshold: input.threshold });
+      sendJson(response, 200, { ...result, mode: 'mock' });
+    } catch (error) {
+      const message = error instanceof TypeError || error instanceof Error ? error.message : 'Pipeline request is invalid.';
+      sendJson(response, 400, { error: message });
+    }
     return;
   }
   if (requestUrl.pathname === '/api/triage') {

@@ -30,6 +30,14 @@ describe('landing page', () => {
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');
   });
 
+  it('links and renders the decision receipts use case', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByTestId('decision-pipeline-nav')).toHaveAttribute('href', '/decision-pipeline');
+    cleanup();
+    render(<App mode="mock" path="/decision-pipeline" />);
+    expect(screen.getByRole('heading', { name: 'Decision pipeline' })).toBeInTheDocument();
+  });
+
   it('links the Jev agent use case from the home page', () => {
     render(<App mode="mock" />);
     expect(screen.getByTestId('jev-agent__nav-link')).toHaveAttribute('href', '/jev-agent');

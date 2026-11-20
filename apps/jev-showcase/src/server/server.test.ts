@@ -80,6 +80,41 @@ describe('jev showcase server', () => {
     expect(response.headers.get('set-cookie')).toBeNull();
   });
 
+  it('runs the decision pipeline offline and returns request-scoped receipts without raw input', async () => {
+    const baseUrl = await listen();
+    const firstResponse = await fetch(`${baseUrl}/api/decision-pipeline/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ item: 'A harmful synthetic request', threshold: 0.7 }),
+    });
+    const first = await firstResponse.json() as { finalAction: string; mode: string; receipts: Array<{ id: string; action: string; reason: string }> };
+    expect(firstResponse.status).toBe(200);
+    expect(first.mode).toBe('mock');
+    expect(first.finalAction).toBe('block');
+    expect(first.receipts).toHaveLength(3);
+    expect(first.receipts[1]?.action).toBe('skipped');
+    expect(JSON.stringify(first)).not.toContain('harmful synthetic request');
+
+    const secondResponse = await fetch(`${baseUrl}/api/decision-pipeline/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ item: 'A routine synthetic request', threshold: 0.7 }),
+    });
+    const second = await secondResponse.json() as { receipts: Array<{ id: string }> };
+    expect(second.receipts).toHaveLength(3);
+    expect(second.receipts.some((receipt) => first.receipts.some((previous) => previous.id === receipt.id))).toBe(false);
+  });
+
+  it('returns a safe error when a live decision pipeline is unavailable', async () => {
+    activeServer = createServer({ JEV_MODE: 'live', TYPESAFE_API_KEY: 'test-only' });
+    await new Promise<void>((resolve) => activeServer?.listen(0, '127.0.0.1', resolve));
+    const address = activeServer.address();
+    if (!address || typeof address === 'string') throw new Error('Server did not bind to a TCP port');
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/decision-pipeline/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ item: 'example', threshold: 0.5 }),
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: expect.stringContaining('Live decision pipeline is not configured') });
+  });
+
   it('triages a synthetic ticket offline and labels the response as mock', async () => {
     const response = await fetch(`${await listen()}/api/triage`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: 'Package arrived damaged.' }),
