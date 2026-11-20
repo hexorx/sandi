@@ -25,6 +25,13 @@ describe('landing page', () => {
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('MOCK');
   });
 
+  it('opens the mobile navigation from its accessible menu button', () => {
+    render(<App mode="mock" />);
+    fireEvent.click(screen.getByTestId('app__mobile-menu'));
+    expect(screen.getByTestId('app__mobile-navigation')).toBeVisible();
+    expect(screen.getByTestId('app__mobile-navigation').querySelector('a[href="/tool-safety"]')).not.toBeNull();
+  });
+
   it('shows a live mode badge when the server reports live mode', () => {
     render(<App mode="live" />);
     expect(screen.getByLabelText('Runtime mode')).toHaveTextContent('LIVE');

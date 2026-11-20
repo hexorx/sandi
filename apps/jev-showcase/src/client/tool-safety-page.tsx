@@ -48,19 +48,19 @@ export function ToolSafetyPage() {
       <section className="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr]" aria-label="Tool safety evaluation">
         <article className="rounded-card border border-line bg-surface p-6 shadow-card">
           <label htmlFor="tool-call" className="text-sm font-semibold">Proposed tool call</label>
-          <select id="tool-call" data-testid="tool-safety-select" className="mt-3 w-full rounded-xl border border-line bg-white p-3 text-sm" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+          <select id="tool-call" data-testid="tool-safety-select" className="mt-3 w-full rounded-xl border border-line bg-elevated p-3 text-sm" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
             {sampleToolCalls.map((toolCall) => <option key={toolCall.id} value={toolCall.id}>{toolCall.tool} · {toolCall.action}</option>)}
           </select>
           <p className="mt-3 text-sm leading-6 text-muted">{selected.description}</p>
           <span className="mt-5 inline-flex rounded-pill border border-line px-2.5 py-1 text-xs capitalize text-muted">{selected.risk} example</span>
-          <button type="button" data-testid="tool-safety-evaluate" className="mt-7 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60" onClick={() => void evaluate()} disabled={busy}>
+          <button type="button" data-testid="tool-safety-evaluate" className="mt-7 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25 disabled:opacity-60" onClick={() => void evaluate()} disabled={busy}>
             {busy ? 'Evaluating…' : 'Evaluate tool call'}
           </button>
           {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
           {result && <div className="mt-6 rounded-xl border border-line bg-canvas p-5" aria-live="polite">
             <div className="flex items-center justify-between gap-3">
               <h2 data-testid="tool-safety-decision" className="text-xl font-semibold">{result.decision.toUpperCase()}</h2>
-              <span data-testid="tool-safety-mode" className="rounded-pill border border-line bg-white px-3 py-1 text-xs font-semibold">{result.mode.toUpperCase()}</span>
+              <span data-testid="tool-safety-mode" className="rounded-pill border border-line bg-elevated px-3 py-1 text-xs font-semibold">{result.mode.toUpperCase()}</span>
             </div>
             <p data-testid="tool-safety-reason" className="mt-3 text-sm leading-6 text-muted">{result.reason}</p>
             <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
