@@ -2,6 +2,8 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createJevClient } from '@sandi/jev';
+import { triageTicket } from './triage.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -57,9 +59,9 @@ function serveClient(request: IncomingMessage, response: ServerResponse, pathnam
   createReadStream(resolvedFilePath).pipe(response);
 }
 
-function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): void {
+async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && requestUrl.pathname === '/api/triage')) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
@@ -71,6 +73,31 @@ function handleRequest(request: IncomingMessage, response: ServerResponse, envir
     sendJson(response, 200, { mode: getRuntimeMode(environment) });
     return;
   }
+  if (requestUrl.pathname === '/api/triage') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (Buffer.concat(chunks).byteLength > 16_384) {
+        sendJson(response, 413, { error: 'Ticket description is too long.' });
+        return;
+      }
+      const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const ticket = typeof body === 'object' && body !== null && 'ticket' in body && typeof body.ticket === 'string' ? body.ticket : '';
+      const mode = getRuntimeMode(environment);
+      const client = createJevClient({ mode, apiKey: environment.TYPESAFE_API_KEY });
+      sendJson(response, 200, await triageTicket(ticket, client));
+    } catch (error) {
+      const message = error instanceof Error && error.message.startsWith('Enter a ticket')
+        ? error.message
+        : 'Unable to triage ticket. Please retry or assign it manually.';
+      sendJson(response, 400, { error: message });
+    }
+    return;
+  }
   if (requestUrl.pathname.startsWith('/api/')) {
     sendJson(response, 404, { error: 'Not found' });
     return;
@@ -79,7 +106,7 @@ function handleRequest(request: IncomingMessage, response: ServerResponse, envir
 }
 
 export function createServer(environment: NodeJS.ProcessEnv = process.env): Server {
-  return createHttpServer((request, response) => handleRequest(request, response, environment));
+  return createHttpServer((request, response) => { void handleRequest(request, response, environment); });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
