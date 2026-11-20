@@ -5,5 +5,5 @@
     "rootDir": "src/server",
     "types": ["node"]
   },
-  "include": ["src/server/server.ts"]
+  "include": ["src/server/**/*.ts"]
 }
