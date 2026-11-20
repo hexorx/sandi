@@ -2,8 +2,10 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { createJevClient } from '@sandi/jev';
 import { triageTicket } from './triage.js';
+import { runModeration, ModerationError } from './moderation.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -59,9 +61,47 @@ function serveClient(request: IncomingMessage, response: ServerResponse, pathnam
   createReadStream(resolvedFilePath).pipe(response);
 }
 
+async function readJson(request: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.byteLength;
+    if (size > 16_384) throw new TypeError('Request body is too large.');
+    chunks.push(buffer);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+}
+
+function createModerationClient(environment: NodeJS.ProcessEnv) {
+  const forceMock = environment.NODE_ENV === 'test' || environment.CI === 'true';
+  const live = !forceMock && environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY);
+  return createJevClient({ mode: live ? 'live' : 'mock', apiKey: live ? environment.TYPESAFE_API_KEY : undefined });
+}
+
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
-  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && requestUrl.pathname === '/api/triage')) {
+  if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/content-moderation/run') {
+    const requestId = randomUUID();
+    try {
+      const body = await readJson(request);
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
+      const input = body as { content?: unknown; policy?: unknown };
+      if (typeof input.content !== 'string' || typeof input.policy !== 'string') throw new TypeError('Content and policy are required.');
+      const client = createModerationClient(environment);
+      const result = await runModeration({ content: input.content, policy: input.policy }, client);
+      sendJson(response, 200, { requestId, mode: client.mode === 'live' ? 'live' : 'mock', result });
+    } catch (error) {
+      if (error instanceof ModerationError) {
+        sendJson(response, 502, { requestId, error: { code: error.code, message: error.message } });
+      } else {
+        const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
+        sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+      }
+    }
+    return;
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
@@ -106,7 +146,11 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
 }
 
 export function createServer(environment: NodeJS.ProcessEnv = process.env): Server {
-  return createHttpServer((request, response) => { void handleRequest(request, response, environment); });
+  return createHttpServer((request, response) => {
+    void handleRequest(request, response, environment).catch(() => {
+      if (!response.headersSent) sendJson(response, 500, { error: { code: 'INTERNAL_ERROR', message: 'Request could not be completed.' } });
+    });
+  });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

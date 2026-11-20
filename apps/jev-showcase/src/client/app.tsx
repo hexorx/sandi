@@ -1,21 +1,24 @@
 import React, { useState } from 'react';
 import triageCode from '../server/triage.ts?raw';
+import { ContentModerationPage } from './moderation.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
 interface AppProps {
   mode: RuntimeMode;
+  path?: string;
 }
 
 const useCases = [
   { number: '01', title: 'A clear recommendation', text: 'Turn a question into a decision you can explain.' },
   { number: '02', title: 'Choices with context', text: 'Compare options against the criteria that matter.' },
-  { number: '03', title: 'A confidence score', text: 'See how strongly the evidence supports an outcome.' },
+  { number: '03', title: 'Content moderation', text: 'Apply a policy consistently, with a clear human-review band.' },
 ];
 
 const sampleTicket = 'My headphones arrived with a cracked ear cup, and I need a replacement before my trip next week.';
 
-export function App({ mode }: AppProps) {
+export function App({ mode, path = window.location.pathname }: AppProps) {
+  if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
   const [ticket, setTicket] = useState(sampleTicket);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
@@ -42,6 +45,7 @@ export function App({ mode }: AppProps) {
         </a>
         <nav aria-label="Main navigation" className="hidden items-center gap-6 text-sm text-muted sm:flex">
           <a href="#support-triage" data-testid="nav-support-triage" className="hover:text-brand">Support ticket triage</a>
+          <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
         </nav>
         <span
           className={`inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 text-xs font-semibold tracking-wide ${
@@ -109,9 +113,9 @@ export function App({ mode }: AppProps) {
               <span className="font-mono text-xs text-brand">{item.number}</span>
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.text}</p>
-              <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">
-                Example coming soon <span aria-hidden="true">↗</span>
-              </span>
+              {item.number === '03' ? <a href="/content-moderation" className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand" data-testid="home__content-moderation-link">
+                Open demo <span aria-hidden="true">↗</span>
+              </a> : <span className="mt-7 inline-flex items-center gap-2 text-sm font-medium text-brand">Example coming soon <span aria-hidden="true">↗</span></span>}
             </article>
           ))}
         </section>
