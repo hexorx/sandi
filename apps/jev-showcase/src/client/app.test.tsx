@@ -53,4 +53,16 @@ describe('landing page', () => {
     expect(screen.getByTestId('triage-selected-queue')).toHaveTextContent('fulfillment');
     vi.restoreAllMocks();
   });
+
+  it('shows the confidence playground and updates its decision from the slider', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByTestId('nav-confidence-playground')).toHaveAttribute('href', '#confidence-playground');
+    expect(screen.getByTestId('threshold-scenario')).toBeInTheDocument();
+    expect(screen.getByTestId('threshold-decision')).toHaveTextContent(/escalate/i);
+    fireEvent.change(screen.getByTestId('threshold-confidence'), { target: { value: '25' } });
+    expect(screen.getByTestId('threshold-decision')).toHaveTextContent(/block/i);
+    expect(screen.getByTestId('threshold-distribution')).toBeInTheDocument();
+    expect(screen.getByTestId('threshold-summary')).toHaveTextContent('Escalated');
+    expect(screen.getByTestId('threshold-code')).toHaveTextContent('decideWithThresholds');
+  });
 });
