@@ -2,6 +2,12 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { createJevClient } from '@sandi/jev';
+import { findToolCall } from './tool-calls.js';
+import { decideToolCall } from './tool-safety.js';
+import { triageTicket } from './triage.js';
+import { runModeration, ModerationError } from './moderation.js';
 import { createJevClientFromEnvironment, runJevAgent } from './jev-agent.js';
 
 export type RuntimeMode = 'mock' | 'live';
@@ -18,7 +24,7 @@ const contentTypes: Record<string, string> = {
 };
 
 export function getRuntimeMode(environment: NodeJS.ProcessEnv): RuntimeMode {
-  return environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY) ? 'live' : 'mock';
+  return environment.NODE_ENV !== 'test' && environment.CI !== 'true' && environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY) ? 'live' : 'mock';
 }
 
 function sendJson(response: ServerResponse, statusCode: number, payload: object): void {
@@ -63,15 +69,17 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   let size = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    size += buffer.length;
-    if (size > 16_384) throw new Error('Request body is too large');
+    size += buffer.byteLength;
+    if (size > 16_384) throw new TypeError('Request body is too large.');
     chunks.push(buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function createModerationClient(environment: NodeJS.ProcessEnv) {
+  const forceMock = environment.NODE_ENV === 'test' || environment.CI === 'true';
+  const live = !forceMock && environment.JEV_MODE === 'live' && Boolean(environment.TYPESAFE_API_KEY);
+  return createJevClient({ mode: live ? 'live' : 'mock', apiKey: live ? environment.TYPESAFE_API_KEY : undefined });
 }
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
@@ -84,24 +92,66 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       sendJson(response, 400, { error: 'Provide a valid JSON task and action.' });
       return;
     }
-    if (!isRecord(body) || typeof body.task !== 'string' || typeof body.action !== 'string' || !body.task.trim() || !body.action.trim() || body.task.length > 1000 || body.action.length > 1000) {
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
+      return;
+    }
+    const input = body as { task?: unknown; action?: unknown };
+    if (typeof input.task !== 'string' || typeof input.action !== 'string' || !input.task.trim() || !input.action.trim() || input.task.length > 1000 || input.action.length > 1000) {
       sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
       return;
     }
     try {
-      const result = await runJevAgent({
-        task: body.task.trim(),
-        action: body.action.trim(),
-        jev: createJevClientFromEnvironment(environment),
-        environment,
-      });
+      const result = await runJevAgent({ task: input.task.trim(), action: input.action.trim(), jev: createJevClientFromEnvironment(environment), environment });
       sendJson(response, 200, result);
     } catch {
       sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
     }
     return;
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
+  if (requestUrl.pathname === '/api/tool-safety/evaluate') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    try {
+      const body = await readJson(request);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
+      const toolCallId = (body as { toolCallId?: unknown }).toolCallId;
+      const toolCall = typeof toolCallId === 'string' ? findToolCall(toolCallId) : undefined;
+      if (!toolCall) {
+        sendJson(response, 400, { error: 'Choose a valid sample tool call.' });
+        return;
+      }
+      const mode = getRuntimeMode(environment);
+      const client = createJevClient({ mode, apiKey: mode === 'live' ? environment.TYPESAFE_API_KEY : undefined, runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' } });
+      sendJson(response, 200, await decideToolCall(toolCall, { client }));
+    } catch {
+      sendJson(response, 502, { error: 'Safety decision is unavailable. Try again.' });
+    }
+    return;
+  }
+  if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/content-moderation/run') {
+    const requestId = randomUUID();
+    try {
+      const body = await readJson(request);
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
+      const input = body as { content?: unknown; policy?: unknown };
+      if (typeof input.content !== 'string' || typeof input.policy !== 'string') throw new TypeError('Content and policy are required.');
+      const client = createModerationClient(environment);
+      const result = await runModeration({ content: input.content, policy: input.policy }, client);
+      sendJson(response, 200, { requestId, mode: client.mode === 'live' ? 'live' : 'mock', result });
+    } catch (error) {
+      if (error instanceof ModerationError) {
+        sendJson(response, 502, { requestId, error: { code: error.code, message: error.message } });
+      } else {
+        const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
+        sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+      }
+    }
+    return;
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
@@ -111,6 +161,31 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
   }
   if (requestUrl.pathname === '/api/mode') {
     sendJson(response, 200, { mode: getRuntimeMode(environment) });
+    return;
+  }
+  if (requestUrl.pathname === '/api/triage') {
+    if (request.method !== 'POST') {
+      sendJson(response, 405, { error: 'Method not allowed' });
+      return;
+    }
+    try {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (Buffer.concat(chunks).byteLength > 16_384) {
+        sendJson(response, 413, { error: 'Ticket description is too long.' });
+        return;
+      }
+      const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const ticket = typeof body === 'object' && body !== null && 'ticket' in body && typeof body.ticket === 'string' ? body.ticket : '';
+      const mode = getRuntimeMode(environment);
+      const client = createJevClient({ mode, apiKey: environment.TYPESAFE_API_KEY });
+      sendJson(response, 200, await triageTicket(ticket, client));
+    } catch (error) {
+      const message = error instanceof Error && error.message.startsWith('Enter a ticket')
+        ? error.message
+        : 'Unable to triage ticket. Please retry or assign it manually.';
+      sendJson(response, 400, { error: message });
+    }
     return;
   }
   if (requestUrl.pathname.startsWith('/api/')) {
@@ -123,7 +198,7 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
 export function createServer(environment: NodeJS.ProcessEnv = process.env): Server {
   return createHttpServer((request, response) => {
     void handleRequest(request, response, environment).catch(() => {
-      if (!response.headersSent) sendJson(response, 500, { error: 'Request could not be completed.' });
+      if (!response.headersSent) sendJson(response, 500, { error: { code: 'INTERNAL_ERROR', message: 'Request could not be completed.' } });
     });
   });
 }

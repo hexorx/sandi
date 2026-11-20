@@ -17,7 +17,7 @@ function Showcase() {
     return () => controller.abort();
   }, []);
 
-  return <App mode={mode} />;
+  return <App mode={mode} path={window.location.pathname} />;
 }
 
 const rootElement = document.getElementById('root');
