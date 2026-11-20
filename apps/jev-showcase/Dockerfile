@@ -10,6 +10,8 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production PORT=3000
 WORKDIR /app
 COPY --from=build --chown=node:node /workspace/apps/jev-showcase/dist ./dist
+COPY --from=build --chown=node:node /workspace/packages/jev/package.json ./node_modules/@sandi/jev/package.json
+COPY --from=build --chown=node:node /workspace/packages/jev/dist/src ./node_modules/@sandi/jev/dist/src
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD wget -q --spider http://127.0.0.1:3000/healthz || exit 1
