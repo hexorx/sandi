@@ -57,6 +57,7 @@ describe('Jev gated agent action', () => {
     const result = await runJevAgent({ task: 'Prepare a workspace export', action: 'Create an export link', jev, threshold: 0.8 });
     expect(result.outcome).toBe('error');
     expect(jev.evaluate).toHaveBeenCalledOnce();
+    expect(result.steps.at(-1)?.message).toMatch(/could not evaluate/i);
     expect(result.steps.some((step) => step.kind === 'action')).toBe(false);
     expect(JSON.stringify(result)).not.toContain('provider detail');
   });

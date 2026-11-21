@@ -98,6 +98,7 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     { kind: 'plan', message: 'Ask Jev to check the proposed action before simulating it.' },
   ];
   let decision: AgentDecision | undefined;
+  let toolIterations = 0;
   const failureController = new AbortController();
   const timeoutSignal = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
   const cancelSignal = AbortSignal.any([timeoutSignal, failureController.signal, ...(options.signal ? [options.signal] : [])]);
@@ -106,6 +107,13 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     description: 'Check the proposed action with Jev, then simulate it only when Jev allows with sufficient confidence.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     callback: async (_input, context) => {
+      if (toolIterations >= JEV_AGENT_MAX_TURNS) {
+        decision = safeErrorResult(`The agent stopped after reaching the maximum of ${JEV_AGENT_MAX_TURNS} turns. No further Jev checks will be attempted.`);
+        steps.push({ kind: 'error', message: decision.message });
+        failureController.abort();
+        return toToolResult(decision);
+      }
+      toolIterations += 1;
       try {
         const result = await options.jev.evaluate(request(
           `Task: ${options.task}\nProposed action: ${options.action}`,
