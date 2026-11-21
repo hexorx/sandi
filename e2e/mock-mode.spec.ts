@@ -94,8 +94,9 @@ test('switches and compares engines across every use case in mock mode', async (
     const checkbox = page.getByLabel('Compare engines');
     if (await checkbox.count()) await checkbox.check();
     await run();
-    await expect(page.getByTestId('engine-compare-result')).toContainText('decider');
-    await expect(page.getByTestId('engine-compare-result')).toContainText('jev');
+    const result = page.getByTestId('engine-compare-result').first();
+    await expect(result).toContainText('decider');
+    await expect(result).toContainText('jev');
   };
 
   await compare('/tool-safety', async () => { await page.getByTestId('tool-safety-evaluate').click(); });
