@@ -1,6 +1,8 @@
 # Jev Showcase
 
-A single-port React and Vite app served by a small Node HTTP server. Mock mode is the default. The server reports `live` only when `JEV_MODE=live` and `TYPESAFE_API_KEY` is present at runtime; the key is never sent to the client.
+A single-port React and Vite app served by a small Node HTTP server. Mock mode is the default. The server reports `live` only when `JEV_MODE=live` and `TYPESAFE_API_KEY` are present at runtime; the key is never sent to the client.
+
+Full setup, live-mode variable names, tests, demo writeups, and a 10-minute walkthrough live in the [repository README](../../README.md) and [`docs/`](../../docs/).
 
 From the repository root:
 
