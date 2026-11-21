@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import moderationCode from '../moderation-core.ts?raw';
 import type { ModerationInput, ModerationResult } from '../moderation-contract.js';
 import type { RuntimeMode } from './app.js';
+import { currentEngineSelection } from './engine-switch.js';
 
 interface ModerationPageProps {
   mode: RuntimeMode;
@@ -18,11 +19,13 @@ async function requestModeration(input: ModerationInput): Promise<ModerationResu
   const response = await fetch('/api/use-cases/content-moderation/run', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, ...currentEngineSelection() }),
   });
-  const payload = await response.json() as { result?: ModerationResult; error?: { message?: string } };
-  if (!response.ok || !payload.result) throw new Error(payload.error?.message ?? 'Decision unavailable. Try again.');
-  return payload.result;
+  const payload = await response.json() as { result?: ModerationResult; execution?: unknown; error?: { message?: string } };
+  if (!response.ok) throw new Error(payload.error?.message ?? 'Decision unavailable. Try again.');
+  if (payload.execution) window.dispatchEvent(new CustomEvent('sandi-engine-result', { detail: payload.execution }));
+  if (payload.result) return payload.result;
+  return { decision: 'flag', reviewRequired: true, probabilities: { allow: 0, flag: 1, remove: 0 }, policyScores: {}, reason: 'See the selected engine result above.' };
 }
 
 function CodePanel() {

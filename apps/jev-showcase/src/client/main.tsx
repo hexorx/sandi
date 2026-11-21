@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App, type RuntimeMode } from './app.js';
 import './styles.css';
+import { EngineSwitch } from './engine-switch.js';
 
 function Showcase() {
   const [mode, setMode] = useState<RuntimeMode>('mock');
@@ -17,7 +18,7 @@ function Showcase() {
     return () => controller.abort();
   }, []);
 
-  return <App mode={mode} path={window.location.pathname} />;
+  return <><div className="mx-auto max-w-6xl px-6 pt-4 lg:px-10"><EngineSwitch /></div><App mode={mode} path={window.location.pathname} /></>;
 }
 
 const rootElement = document.getElementById('root');

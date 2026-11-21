@@ -85,3 +85,24 @@ test('shows an actionable error when moderation cannot reach its endpoint', asyn
   await page.getByTestId('content-moderation__run-button').click();
   await expect(page.getByTestId('content-moderation__error')).toHaveText('Decision unavailable. Try again.');
 });
+
+test('switches and compares engines across every use case in mock mode', async ({ page, externalJevRequests }) => {
+  const compare = async (path: string, run: () => Promise<void>) => {
+    await page.goto(path);
+    await page.getByLabel('Decision engine').last().check();
+    const checkbox = page.getByLabel('Compare engines');
+    if (await checkbox.count()) await checkbox.check();
+    await run();
+    await expect(page.getByTestId('engine-compare-result')).toContainText('decider');
+    await expect(page.getByTestId('engine-compare-result')).toContainText('jev');
+  };
+
+  await compare('/tool-safety', async () => { await page.getByTestId('tool-safety-evaluate').click(); });
+  await compare('/', async () => { await page.getByTestId('triage-button').click(); });
+  await compare('/content-moderation', async () => { await page.getByTestId('content-moderation__run-button').click(); });
+  await compare('/decision-pipeline', async () => { await page.getByTestId('run-decision-pipeline').click(); });
+  await compare('/jev-agent', async () => { await page.getByTestId('jev-agent__run-button').click(); });
+  await compare('/', async () => { await page.getByTestId('threshold-engine-run').click(); });
+  await compare('/pii-phi-guardrails', async () => { await page.getByTestId('pii-phi__run').click(); });
+  expect(externalJevRequests).toEqual([]);
+});

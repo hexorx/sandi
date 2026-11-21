@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import implementationSource from '../server/jev-agent.ts?raw';
 import type { RuntimeMode } from './app.js';
+import { currentEngineSelection } from './engine-switch.js';
 
 interface JevAgentPageProps {
   mode: RuntimeMode;
@@ -50,11 +51,13 @@ export function JevAgentPage({ mode }: JevAgentPageProps) {
       const response = await fetch('/api/use-cases/jev-agent/run', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ task, action }),
+        body: JSON.stringify({ task, action, ...currentEngineSelection() }),
       });
       const payload = await response.json() as AgentRun | { error?: string };
-      if (!response.ok || !('steps' in payload)) throw new Error('error' in payload ? payload.error : undefined);
-      setRun(payload);
+      if ('execution' in payload) window.dispatchEvent(new CustomEvent('sandi-engine-result', { detail: payload.execution }));
+      if (!response.ok) throw new Error('error' in payload ? payload.error : undefined);
+      if ('steps' in payload) setRun(payload);
+      else setRun({ outcome: 'acted', agentMode: 'ollama', steps: [{ kind: 'result', message: 'See the selected engine result above.' }] });
     } catch (cause) {
       setError(cause instanceof Error && cause.message ? cause.message : 'Agent run unavailable. Try again.');
     } finally {

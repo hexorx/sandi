@@ -8,7 +8,7 @@ const sampleText = 'Patient: Example Person; SSN: 123-45-6789; MRN: DEMO-MRN-000
 
 interface GuardrailAnswer {
   guardrails: { action: string; findings: Array<{ category: string; start: number; end: number; confidence: string }>; redactedText?: string; reasonCode: string };
-  received: { engine: Engine; mode: 'mock'; text: string; response: string } | null;
+  received: { engine: Engine; mode: 'mock' | 'live'; text: string; response: string } | null;
 }
 type RunResult = EngineRun & { answer: GuardrailAnswer };
 
@@ -31,6 +31,7 @@ export function PiiPhiGuardrailsPage() {
       const payload = await response.json() as { execution?: unknown; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? 'Guardrail check failed. Try again.');
       setResult(payload.execution);
+      window.dispatchEvent(new CustomEvent('sandi-engine-result', { detail: payload.execution }));
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Guardrail check failed. Try again.'); }
     finally { setLoading(false); }
   }
