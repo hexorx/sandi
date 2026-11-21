@@ -31,6 +31,19 @@ describe('PII/PHI guardrail endpoint', () => {
     expect(payload.execution.results.decider.answer.received).toBeNull();
   });
 
+  it('reports the actual runtime mode in the top-level response', async () => {
+    activeServer = createServer({ NODE_ENV: 'production', JEV_MODE: 'live', TYPESAFE_API_KEY: 'synthetic-test-key' });
+    await new Promise<void>((resolve) => activeServer?.listen(0, '127.0.0.1', resolve));
+    const address = activeServer.address();
+    if (!address || typeof address === 'string') throw new Error('Server did not bind');
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/use-cases/pii-phi-guardrails/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Email demo@example.invalid', policy: 'strict' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ mode: 'live' });
+  });
+
   it('passes only redacted text to the selected mock agent', async () => {
     const response = await run({ text: 'Call me at (202) 555-0100', policy: 'redact-medium', engine: 'decider', compare: false });
     const payload = await response.json() as { execution: { result: { answer: { received: { text: string } } } } };

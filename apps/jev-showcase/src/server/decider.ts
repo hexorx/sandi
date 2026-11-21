@@ -48,11 +48,12 @@ export async function runDecider(
   useCase: string,
   payload: unknown,
   environment: NodeJS.ProcessEnv = process.env,
+  signal?: AbortSignal,
 ): Promise<EngineRun> {
   const configured = Boolean(environment.OLLAMA_BASE_URL && environment.OLLAMA_MODEL);
   const agent = createDeciderFromEnvironment(environment);
   const started = Date.now();
-  const response = await agent.invoke(`Evaluate this ${useCase} input. Return a concise decision with rationale. Input: ${JSON.stringify(payload)}`);
+  const response = await agent.invoke(`Evaluate this ${useCase} input. Return a concise decision with rationale. Input: ${JSON.stringify(payload)}`, { cancelSignal: signal, limits: { turns: 5 } });
   const content = (response as { toString?: () => string }).toString?.() ?? 'Mock decision ready.';
   return {
     requestedEngine: 'decider',

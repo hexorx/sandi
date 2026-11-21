@@ -89,6 +89,11 @@ function createModerationClient(environment: NodeJS.ProcessEnv) {
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
   if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/jev-agent/run') {
+    const disconnectController = new AbortController();
+    response.once('close', () => {
+      if (!response.writableEnded) disconnectController.abort();
+    });
+    const requestSignal = AbortSignal.any([disconnectController.signal, AbortSignal.timeout(30_000)]);
     let body: unknown;
     try {
       body = await readJson(request);
@@ -107,14 +112,14 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     }
     try {
       const selection = requestedEngine(input.engine, input.compare);
-      const jev = selection === 'decider' ? undefined : await runJevAgent({ task: input.task.trim(), action: input.action.trim(), jev: createJevClientFromEnvironment(environment), environment });
-      const decider = selection === 'jev' ? undefined : await runDecider('jev-agent', { task: input.task.trim(), action: input.action.trim() }, environment);
+      const jev = selection === 'decider' ? undefined : await runJevAgent({ task: input.task.trim(), action: input.action.trim(), jev: createJevClientFromEnvironment(environment), environment, signal: requestSignal });
+      const decider = selection === 'jev' ? undefined : await runDecider('jev-agent', { task: input.task.trim(), action: input.action.trim() }, environment, requestSignal);
       const execution = selection === 'compare'
         ? { mode: 'compare' as const, results: { jev: { requestedEngine: 'jev', engine: 'jev', answer: jev }, decider } }
         : { mode: 'single' as const, result: selection === 'jev' ? { requestedEngine: 'jev', engine: 'jev', answer: jev } : decider };
-      sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
+      if (!requestSignal.aborted) sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
     } catch {
-      sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
+      if (!requestSignal.aborted) sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
     }
     return;
   }
@@ -177,6 +182,11 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run') {
     const requestId = randomUUID();
+    const disconnectController = new AbortController();
+    response.once('close', () => {
+      if (!response.writableEnded) disconnectController.abort();
+    });
+    const requestSignal = AbortSignal.any([disconnectController.signal, AbortSignal.timeout(30_000)]);
     try {
       const body = await readJson(request);
       if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
@@ -195,24 +205,26 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       const run = async (requestedEngine: EngineSelection): Promise<EngineRun> => {
         if (requestedEngine === 'decider') {
           if (agentInput === undefined) return { requestedEngine, engine: 'mock', answer: { guardrails: result, received: null }, confidence: {}, latencyMs: 0, fallback: { reason: 'unconfigured' } };
-          const modelRun = await runDecider('pii-phi-guardrails', { text: agentInput }, environment);
+          const modelRun = await runDecider('pii-phi-guardrails', { text: agentInput }, environment, requestSignal);
           return { ...modelRun, requestedEngine, answer: { guardrails: result, received: { engine: 'decider', mode: modelRun.engine === 'decider' ? 'live' : 'mock', text: agentInput, response: modelRun.explanation ?? 'Decider completed the guarded sample.' } } };
         }
         const client = createJevClientFromEnvironment(environment);
-        const agentResult = agentInput === undefined ? undefined : await runJevAgent({ task: 'Check the guardrail-approved sample before continuing.', action: agentInput, jev: client, environment });
+        const agentResult = agentInput === undefined ? undefined : await runJevAgent({ task: 'Check the guardrail-approved sample before continuing.', action: agentInput, jev: client, environment, signal: requestSignal });
         return { requestedEngine, engine: client.mode === 'live' ? 'jev' : 'mock', answer: { guardrails: result, received: agentInput === undefined ? null : { engine: 'jev', mode: client.mode === 'live' ? 'live' : 'mock', text: agentInput, response: agentResult?.steps.at(-1)?.message ?? 'Jev checked the guarded sample.' } }, confidence: {}, latencyMs: 0, ...(client.mode === 'live' ? {} : { fallback: { reason: 'unconfigured' as const } }) };
       };
       const execution = selection === 'compare'
         ? { mode: 'compare' as const, results: Object.fromEntries(await Promise.all((['jev', 'decider'] as const).map(async (requestedEngine) => [requestedEngine, await run(requestedEngine)]))) }
         : { mode: 'single' as const, result: await run(selection) };
-      sendJson(response, 200, {
+      if (!requestSignal.aborted) sendJson(response, 200, {
         requestId,
-        mode: 'mock',
+        mode: getRuntimeMode(environment),
         execution,
       });
     } catch (error) {
-      const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
-      sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+      if (!requestSignal.aborted) {
+        const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
+        sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+      }
     }
     return;
   }
