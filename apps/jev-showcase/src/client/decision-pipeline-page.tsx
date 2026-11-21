@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import pipelineSource from '../server/decision-pipeline.ts?raw';
 import type { RuntimeMode } from './app.js';
+import { currentEngineSelection } from './engine-switch.js';
 
 interface Receipt {
   id: string;
@@ -15,9 +16,10 @@ interface Receipt {
 
 interface PipelineResponse {
   useCase: 'decision-pipeline';
-  finalAction: string;
+  finalAction?: string;
   mode: RuntimeMode;
-  receipts: Receipt[];
+  receipts?: Receipt[];
+  execution?: unknown;
 }
 
 interface Props { mode: RuntimeMode; }
@@ -35,10 +37,11 @@ export function DecisionPipelinePage({ mode }: Props) {
     try {
       const response = await fetch('/api/decision-pipeline/run', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ item, threshold }),
+        body: JSON.stringify({ item, threshold, ...currentEngineSelection() }),
       });
       const payload = await response.json() as PipelineResponse | { error?: string };
       if (!response.ok) throw new Error('error' in payload ? payload.error : 'Pipeline could not run.');
+      if ('execution' in payload) window.dispatchEvent(new CustomEvent('sandi-engine-result', { detail: payload.execution }));
       setResult(payload as PipelineResponse);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Pipeline could not run.');
@@ -49,7 +52,7 @@ export function DecisionPipelinePage({ mode }: Props) {
 
   function exportJson(): void {
     if (!result) return;
-    const blob = new Blob([JSON.stringify(result.receipts, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(result.receipts ?? [], null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -66,6 +69,7 @@ export function DecisionPipelinePage({ mode }: Props) {
         <p className="mt-3 max-w-2xl text-muted">Each gate leaves a receipt, including stages skipped after a decision.</p></div>
       <span aria-label="Runtime mode" className="rounded-pill border border-line bg-surface px-3 py-1.5 text-xs font-semibold">{mode.toUpperCase()}</span>
     </header>
+    {result?.execution !== undefined ? <pre data-testid="engine-compare-result" className="mt-5 overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-white">{JSON.stringify(result.execution, null, 2)}</pre> : null}
     <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="rounded-card border border-line bg-surface p-6 shadow-card">
         <h2 className="text-lg font-semibold">Try the pipeline</h2>
@@ -75,13 +79,13 @@ export function DecisionPipelinePage({ mode }: Props) {
         <input id="pipeline-threshold" className="mt-3 w-full" type="range" min="0" max="1" step="0.05" value={threshold} onChange={(event) => setThreshold(Number(event.target.value))} />
         <button data-testid="run-decision-pipeline" className="mt-5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white focus:outline-none focus:ring-4 focus:ring-blue-200" onClick={() => void run()} disabled={busy}>{busy ? 'Running…' : 'Run pipeline'}</button>
         {error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-        {result && <p className="mt-4 text-sm">Final action: <strong data-testid="decision-final-action">{result.finalAction}</strong></p>}
+        {result && <p className="mt-4 text-sm">Final action: <strong data-testid="decision-final-action">{result.finalAction ?? 'See selected engine result'}</strong></p>}
       </div>
       <section className="rounded-card border border-line bg-surface p-6 shadow-card" aria-labelledby="receipt-heading">
         <div className="flex items-center justify-between gap-4"><h2 id="receipt-heading" className="text-lg font-semibold">Decision receipts</h2>
           <button className="rounded-lg border border-line px-3 py-2 text-sm font-medium disabled:opacity-50" onClick={exportJson} disabled={!result}>Export JSON</button></div>
         {!result && <p className="mt-5 text-sm text-muted">Run the pipeline to inspect its receipt log.</p>}
-        {result && <ol data-testid="decision-receipt-log" className="mt-5 space-y-3">{result.receipts.map((receipt) => <li key={receipt.id} className="rounded-xl border border-line p-4">
+        {result && <ol data-testid="decision-receipt-log" className="mt-5 space-y-3">{(result.receipts ?? []).map((receipt) => <li key={receipt.id} className="rounded-xl border border-line p-4">
           <div className="flex justify-between gap-3"><strong>{receipt.stage}</strong><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{receipt.action}</span></div>
           <p className="mt-2 text-sm text-muted">{receipt.reason}</p><p className="mt-2 font-mono text-xs text-muted">{receipt.inputHash}</p>
           <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Inspect receipt JSON</summary><pre className="mt-2 overflow-auto rounded-lg bg-slate-50 p-3 text-xs" data-testid="decision-receipt-json">{JSON.stringify(receipt, null, 2)}</pre></details>

@@ -33,6 +33,16 @@ describe('jev showcase server', () => {
     expect(result.reason).toBeTruthy();
   });
 
+  it('supports the decider and compare engine selections on tool safety', async () => {
+    const baseUrl = await listen();
+    const decider = await fetch(`${baseUrl}/api/tool-safety/evaluate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toolCallId: 'read-status', engine: 'decider' }) });
+    expect(decider.status).toBe(200);
+    expect(await decider.json()).toMatchObject({ execution: { mode: 'single', result: { requestedEngine: 'decider' } } });
+    const compare = await fetch(`${baseUrl}/api/tool-safety/evaluate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toolCallId: 'read-status', engine: 'jev', compare: true }) });
+    expect(compare.status).toBe(200);
+    expect(await compare.json()).toMatchObject({ execution: { mode: 'compare', results: { jev: { requestedEngine: 'jev' }, decider: { requestedEngine: 'decider' } } } });
+  });
+
   it('rejects unknown tool calls with a safe validation error', async () => {
     const response = await fetch(`${await listen()}/api/tool-safety/evaluate`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toolCallId: 'unknown' }),
@@ -103,16 +113,21 @@ describe('jev showcase server', () => {
     expect(second.receipts.some((receipt) => first.receipts.some((previous) => previous.id === receipt.id))).toBe(false);
   });
 
-  it('returns a safe error when a live decision pipeline is unavailable', async () => {
-    activeServer = createServer({ JEV_MODE: 'live', TYPESAFE_API_KEY: 'test-only' });
+  it('supports decider selection for the decision pipeline in mock mode', async () => {
+    const response = await fetch(`${await listen()}/api/decision-pipeline/run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ item: 'A routine request', threshold: 0.7, engine: 'decider' }) });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ execution: { mode: 'single', result: { requestedEngine: 'decider' } } });
+  });
+
+  it('keeps the decision pipeline available when live mode is missing its runtime key', async () => {
+    activeServer = createServer({ JEV_MODE: 'live' });
     await new Promise<void>((resolve) => activeServer?.listen(0, '127.0.0.1', resolve));
     const address = activeServer.address();
     if (!address || typeof address === 'string') throw new Error('Server did not bind to a TCP port');
     const response = await fetch(`http://127.0.0.1:${address.port}/api/decision-pipeline/run`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ item: 'example', threshold: 0.5 }),
     });
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: expect.stringContaining('Live decision pipeline is not configured') });
+    expect(response.status).toBe(200);
   });
 
   it('triages a synthetic ticket offline and labels the response as mock', async () => {
@@ -121,6 +136,27 @@ describe('jev showcase server', () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ mode: 'mock', category: { probabilities: expect.any(Object) }, urgency: { probabilities: expect.any(Object) }, queue: { probabilities: expect.any(Object) } });
+  });
+
+  it('supports Decider and compare selections for triage, moderation, and the agent', async () => {
+    const baseUrl = await listen();
+    const requests = [
+      ['/api/triage', { ticket: 'Synthetic delivery issue', engine: 'decider' }],
+      ['/api/use-cases/content-moderation/run', { content: 'Synthetic criticism', policy: 'Allow criticism', compare: true }],
+      ['/api/use-cases/jev-agent/run', { task: 'Check a sample', action: 'Simulate a safe action', engine: 'decider' }],
+    ] as const;
+    const responses = await Promise.all(requests.map(([path, body]) => fetch(`${baseUrl}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })));
+    expect(responses.map(({ status }) => status)).toEqual([200, 200, 200]);
+    const payloads = await Promise.all(responses.map((response) => response.json() as Promise<{ execution: { mode: string; result?: { requestedEngine?: string }; results?: Record<string, { requestedEngine?: string }> } }>));
+    expect(payloads[0]?.execution.result?.requestedEngine).toBe('decider');
+    expect(payloads[1]?.execution).toMatchObject({ mode: 'compare', results: { jev: { requestedEngine: 'jev' }, decider: { requestedEngine: 'decider' } } });
+    expect(payloads[2]?.execution.result?.requestedEngine).toBe('decider');
+  });
+
+  it('compares Jev and Decider in the confidence threshold playground', async () => {
+    const response = await fetch(`${await listen()}/api/threshold/evaluate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confidence: 0.8, allowThreshold: 0.75, blockThreshold: 0.35, compare: true }) });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ execution: { mode: 'compare', results: { jev: { requestedEngine: 'jev' }, decider: { requestedEngine: 'decider' } } } });
   });
 
   it('returns a clear validation error for an empty ticket', async () => {
