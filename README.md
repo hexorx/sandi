@@ -44,11 +44,11 @@ Environment variable **names** (see `.env.example`; values stay in a local `.env
 | `OLLAMA_BASE_URL` | Optional. When set with a model name, the Jev consulting agent can use a local Ollama model instead of the scripted agent. |
 | `OLLAMA_MODEL` | Optional. Model id for the Ollama-backed agent path. |
 
-Example (local shell only — do not commit values):
+To enable live mode locally: set `JEV_MODE=live` and provide `TYPESAFE_API_KEY` privately in your shell or a git-ignored `.env` (never commit the value; `.env.example` lists names only). Then start the showcase:
 
 ```sh
 export JEV_MODE=live
-export TYPESAFE_API_KEY=…   # from your TypeSafe account; never commit
+# Set TYPESAFE_API_KEY in this shell or load it from a local .env — do not paste the value into docs or commits.
 corepack pnpm --filter @sandi/jev-showcase start
 ```
 
