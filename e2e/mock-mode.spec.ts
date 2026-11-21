@@ -89,6 +89,7 @@ test('shows an actionable error when moderation cannot reach its endpoint', asyn
 test('switches and compares engines across every use case in mock mode', async ({ page, externalJevRequests }) => {
   const compare = async (path: string, run: () => Promise<void>) => {
     await page.goto(path);
+    await expect(page.getByLabel('Decision engine')).toHaveCount(2);
     await page.getByLabel('Decision engine').last().check();
     const checkbox = page.getByLabel('Compare engines');
     if (await checkbox.count()) await checkbox.check();

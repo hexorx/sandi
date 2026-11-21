@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { sampleToolCalls } from '../server/tool-calls.js';
 import toolSafetySource from '../server/tool-safety.ts?raw';
-import { currentEngineSelection, EngineSwitch } from './engine-switch.js';
+import { currentEngineSelection } from './engine-switch.js';
 
 interface ToolSafetyResponse {
   mode: 'mock' | 'replay' | 'live';
@@ -47,8 +47,6 @@ export function ToolSafetyPage() {
         <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Should this tool call run?</h1>
         <p className="mt-4 text-lg leading-8 text-muted">Choose a proposed action. Jev estimates whether it should be allowed, blocked, or sent for human review.</p>
       </section>
-      <EngineSwitch />
-
       <section className="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr]" aria-label="Tool safety evaluation">
         <article className="rounded-card border border-line bg-surface p-6 shadow-card">
           <label htmlFor="tool-call" className="text-sm font-semibold">Proposed tool call</label>
