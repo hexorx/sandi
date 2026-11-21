@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import guardrailCode from '../server/pii-phi.ts?raw';
 import type { GuardrailPolicy } from '../server/pii-phi.js';
 import type { EngineRun } from '../decision-engine-contract.js';
+import { currentEngineSelection } from './engine-switch.js';
 
 type Engine = 'jev' | 'decider';
 const sampleText = 'Patient: Example Person; SSN: 123-45-6789; MRN: DEMO-MRN-0001; DOB: 2000-01-01; demo@example.invalid; (202) 555-0100; 123 Example St; Diagnosis: Example condition';
@@ -15,8 +16,6 @@ type RunResult = EngineRun & { answer: GuardrailAnswer };
 export function PiiPhiGuardrailsPage() {
   const [text, setText] = useState(sampleText);
   const [policy, setPolicy] = useState<GuardrailPolicy>('strict');
-  const [engine, setEngine] = useState<Engine>('jev');
-  const [compare, setCompare] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +25,7 @@ export function PiiPhiGuardrailsPage() {
     try {
       const response = await fetch('/api/use-cases/pii-phi-guardrails/run', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, policy, engine, compare }),
+        body: JSON.stringify({ text, policy, ...currentEngineSelection() }),
       });
       const payload = await response.json() as { execution?: unknown; error?: { message?: string } };
       if (!response.ok) throw new Error(payload.error?.message ?? 'Guardrail check failed. Try again.');
@@ -39,8 +38,8 @@ export function PiiPhiGuardrailsPage() {
   const execution = result as { mode?: unknown; results?: Record<string, RunResult>; result?: RunResult } | null;
   const runs: Array<[string, RunResult]> = execution?.mode === 'compare' && execution.results
     ? Object.entries(execution.results)
-    : execution?.result
-      ? [[execution.result.requestedEngine ?? engine, execution.result]]
+      : execution?.result
+      ? [[execution.result.requestedEngine ?? 'jev', execution.result]]
       : [];
 
   return <div className="min-h-screen bg-canvas text-ink">
@@ -56,11 +55,7 @@ export function PiiPhiGuardrailsPage() {
         <p className="mt-3 text-sm leading-6 text-muted">Synthetic examples only. Detection is heuristic. Passing this check does not make real information safe to share. The detector and mock agent run locally.</p>
         <label htmlFor="guardrail-input" className="mt-6 block text-sm font-medium">Synthetic prompt</label>
         <textarea id="guardrail-input" data-testid="pii-phi__input" value={text} onChange={(event) => setText(event.target.value)} rows={7} maxLength={5000} className="mt-2 w-full rounded-xl border border-line bg-white p-3 text-sm leading-6 focus:outline-none focus:ring-4 focus:ring-blue-100" />
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-medium">Policy<select data-testid="pii-phi__policy" value={policy} onChange={(event) => setPolicy(event.target.value as GuardrailPolicy)} className="mt-2 block w-full rounded-lg border border-line bg-white p-2"><option value="strict">Strict: block every finding</option><option value="redact-medium">Redact medium confidence</option></select></label>
-          <label className="text-sm font-medium">Mock agent<select data-testid="pii-phi__engine" value={engine} onChange={(event) => setEngine(event.target.value as Engine)} className="mt-2 block w-full rounded-lg border border-line bg-white p-2"><option value="jev">Jev</option><option value="decider">Decider</option></select></label>
-        </div>
-        <label className="mt-4 flex items-center gap-2 text-sm"><input data-testid="pii-phi__compare" type="checkbox" checked={compare} onChange={(event) => setCompare(event.target.checked)} />Compare Jev and Decider mock runs</label>
+        <label className="mt-4 block text-sm font-medium">Policy<select data-testid="pii-phi__policy" value={policy} onChange={(event) => setPolicy(event.target.value as GuardrailPolicy)} className="mt-2 block w-full rounded-lg border border-line bg-white p-2"><option value="strict">Strict: block every finding</option><option value="redact-medium">Redact medium confidence</option></select></label>
         <button type="button" data-testid="pii-phi__run" onClick={() => void evaluate()} disabled={loading || !text.trim()} className="mt-5 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{loading ? 'Checking…' : 'Check and simulate'}</button>
         {error && <p role="alert" data-testid="pii-phi__error" className="mt-4 text-sm text-red-700">{error}</p>}
         {runs.map(([name, run]) => <article key={name} data-testid={`pii-phi__result-${name}`} className="mt-6 rounded-xl border border-line bg-canvas p-4">
