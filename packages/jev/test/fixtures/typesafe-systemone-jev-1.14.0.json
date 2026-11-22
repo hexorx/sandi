@@ -1,0 +1,71 @@
+[
+  {
+    "route": "tool-safety",
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "allowed": { "type": "noul", "noul": 0.88 },
+        "action": { "type": "choice", "choice": "allow", "confidence": 0.86, "probabilities": { "allow": 0.93, "block": 0.07 } }
+      },
+      "usage": { "input_tokens": 400, "output_tokens": 47 }
+    }
+  },
+  {
+    "route": "triage",
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "category": { "type": "choice", "choice": "orders", "confidence": 1, "probabilities": { "orders": 1, "billing": 0, "account": 0 } },
+        "urgency": { "type": "score", "score": 1.13, "confidence": 0.48, "legend": { "0": "low", "1": "normal", "2": "high" }, "probabilities": { "0": 0.11, "1": 0.65, "2": 0.24 } },
+        "queue": { "type": "choice", "choice": "fulfillment", "confidence": 0.92, "probabilities": { "support": 0.05, "billing": 0, "fulfillment": 0.95 } }
+      },
+      "usage": { "input_tokens": 458, "output_tokens": 91 }
+    }
+  },
+  {
+    "route": "threshold",
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": { "decision": { "type": "choice", "choice": "allow", "confidence": 0.98, "probabilities": { "allow": 0.99, "block": 0, "review": 0.01 } } },
+      "usage": { "input_tokens": 372, "output_tokens": 38 }
+    }
+  },
+  {
+    "route": "decision-pipeline",
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "safety": { "type": "choice", "choice": "allow", "confidence": 0.68, "probabilities": { "allow": 0.84, "block": 0.16 } },
+        "quality": { "type": "choice", "choice": "review", "confidence": 0.74, "probabilities": { "pass": 0.13, "review": 0.87 } }
+      },
+      "usage": { "input_tokens": 386, "output_tokens": 61 }
+    }
+  },
+  {
+    "route": "content-moderation",
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": {
+        "outcome": { "type": "choice", "choice": "allow", "confidence": 0.94, "probabilities": { "allow": 0.96, "flag": 0.03, "remove": 0.01 } },
+        "harassment": { "type": "score", "score": 0, "confidence": 1, "legend": { "0": "low", "1": "medium", "2": "high" }, "probabilities": { "0": 1, "1": 0, "2": 0 } },
+        "threats": { "type": "score", "score": 0.01, "confidence": 1, "legend": { "0": "low", "1": "medium", "2": "high" }, "probabilities": { "0": 1, "1": 0, "2": 0 } },
+        "spam": { "type": "score", "score": 0.11, "confidence": 0.85, "legend": { "0": "low", "1": "medium", "2": "high" }, "probabilities": { "0": 0.93, "1": 0.04, "2": 0.03 } }
+      },
+      "usage": { "input_tokens": 502, "output_tokens": 83 }
+    }
+  },
+  {
+    "route": "jev-agent",
+    "status": 200,
+    "body": {
+      "model": "jev-1.14.0",
+      "answers": { "safe": { "type": "choice", "choice": "yes", "confidence": 0.5, "probabilities": { "yes": 0.75, "no": 0.25 } } },
+      "usage": { "input_tokens": 359, "output_tokens": 31 }
+    }
+  }
+]

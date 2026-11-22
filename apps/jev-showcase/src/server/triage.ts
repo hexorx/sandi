@@ -1,4 +1,4 @@
-import { choice, createJevClient, request, score, type JevClient, type JevQuestion } from '@sandi/jev';
+import { choice, createJevClient, JevError, request, score, type JevClient, type JevQuestion } from '@sandi/jev';
 
 const CONFIDENCE_THRESHOLD = 0.65;
 const questions = {
@@ -28,7 +28,8 @@ export async function triageTicket(ticket: string, client: Pick<JevClient, 'mode
     };
     const routing = routeTicket(confidence);
     return { mode: client.mode, category: response.category, urgency: response.urgency, queue: response.queue, route: routing.needsHuman ? routing.queue : response.queue.value, needsHuman: routing.needsHuman };
-  } catch {
-    throw new Error('Unable to triage ticket. Please retry or assign it manually.');
+  } catch (error) {
+    if (error instanceof JevError) throw error;
+    throw new Error('Unable to triage ticket. Please retry or assign it manually.', { cause: error });
   }
 }

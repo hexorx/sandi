@@ -11,7 +11,7 @@ import {
   type JSONValue,
   type ModelStreamEvent,
 } from '@strands-agents/sdk';
-import { choice, createJevClient, request, type JevClient } from '@sandi/jev';
+import { choice, createJevClient, JevError, request, type JevClient } from '@sandi/jev';
 import { createModelFromEnvironment } from './ollama-model.js';
 
 export type AgentStep = {
@@ -72,8 +72,8 @@ class ScriptedAgentModel extends Model<BaseModelConfig> {
   }
 }
 
-function safeErrorResult(): AgentDecision {
-  return { outcome: 'error', message: 'Jev could not evaluate this action. Try again.' };
+function safeErrorResult(error?: unknown): AgentDecision {
+  return { outcome: 'error', message: error instanceof JevError ? error.message : 'Jev could not evaluate this action. Try again.' };
 }
 
 function toToolResult(decision: AgentDecision): JSONValue {
@@ -124,8 +124,8 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
           steps.push({ kind: 'result', message: `${decision.message} No action was taken.` });
         }
         return toToolResult(decision);
-      } catch {
-        decision = safeErrorResult();
+      } catch (error) {
+        decision = safeErrorResult(error);
         steps.push({ kind: 'error', message: decision.message });
         return toToolResult(decision);
       }
