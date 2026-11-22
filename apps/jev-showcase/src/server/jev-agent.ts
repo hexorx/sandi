@@ -11,7 +11,7 @@ import {
   type JSONValue,
   type ModelStreamEvent,
 } from '@strands-agents/sdk';
-import { choice, createJevClient, request, type JevClient } from '@sandi/jev';
+import { choice, createJevClient, JevError, request, type JevClient } from '@sandi/jev';
 import { createModelFromEnvironment } from './ollama-model.js';
 
 export type AgentStep = {
@@ -78,7 +78,12 @@ class ScriptedAgentModel extends Model<BaseModelConfig> {
   }
 }
 
-function safeErrorResult(message = 'Jev could not evaluate this action. Try again.'): AgentDecision {
+function safeErrorResult(error?: unknown): AgentDecision {
+  const message = error instanceof JevError
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : 'Jev could not evaluate this action. Try again.';
   return { outcome: 'error', message };
 }
 
@@ -141,10 +146,10 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
           steps.push({ kind: 'result', message: `${decision.message} No action was taken.` });
         }
         return toToolResult(decision);
-      } catch {
-        decision = timeoutSignal.aborted
+      } catch (error) {
+        decision = timeoutSignal.aborted && !options.signal?.aborted
           ? safeErrorResult('The agent request timed out. Try again.')
-          : safeErrorResult();
+          : safeErrorResult(error);
         steps.push({ kind: 'error', message: decision.message });
         failureController.abort();
         return toToolResult(decision);
@@ -169,7 +174,9 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     stopReason = result.stopReason;
   } catch {
     if (!decision) {
-      decision = safeErrorResult();
+      decision = timeoutSignal.aborted && !options.signal?.aborted
+        ? safeErrorResult('The agent request timed out. Try again.')
+        : safeErrorResult();
       steps.push({ kind: 'error', message: decision.message });
     }
   }

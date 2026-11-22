@@ -1,4 +1,4 @@
-import { choice, createJevClient, noul, request, type JevClient, type JevResponse } from '@sandi/jev';
+import { choice, createJevClient, JevError, noul, request, type JevClient, type JevResponse } from '@sandi/jev';
 import type { ToolCallExample } from './tool-calls.js';
 
 export type SafetyDecision = 'allow' | 'block' | 'review';
@@ -30,8 +30,9 @@ export async function decideToolCall(
   let result: JevResponse;
   try {
     result = await client.evaluate(createToolSafetyRequest(toolCall));
-  } catch {
-    throw new Error('Safety decision is unavailable. Try again.');
+  } catch (error) {
+    if (error instanceof JevError) throw error;
+    throw new Error('Safety decision is unavailable. Try again.', { cause: error });
   }
 
   const allowed = result.allowed?.value === 'yes';

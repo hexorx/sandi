@@ -100,5 +100,6 @@ describe('Jev gated agent action', () => {
     const result = await runJevAgent({ task: 'Prepare export', action: 'Create link', jev, timeoutMs: 20 });
     expect(receivedSignal?.aborted).toBe(true);
     expect(result.outcome).toBe('error');
+    expect(result.steps.at(-1)?.message).toMatch(/agent request timed out/i);
   });
 });

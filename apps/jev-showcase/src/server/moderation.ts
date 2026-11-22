@@ -1,14 +1,13 @@
-import { choice, createJevClient, request, score, type JevClient } from '@sandi/jev';
+import { choice, createJevClient, JevError, request, score, type JevClient } from '@sandi/jev';
 import { evaluateModeration, type ModerationAnswer } from '../moderation-core.js';
 import type { ModerationInput, ModerationResult } from '../moderation-contract.js';
 export { evaluateModeration, type ModerationAnswer } from '../moderation-core.js';
 
 export class ModerationError extends Error {
   readonly code = 'UPSTREAM_ERROR';
-  readonly message = 'Decision unavailable. Try again.';
 
-  constructor() {
-    super('Decision unavailable. Try again.');
+  constructor(message = 'Decision unavailable. Try again.') {
+    super(message);
     this.name = 'ModerationError';
   }
 }
@@ -42,7 +41,7 @@ export async function runModeration(input: ModerationInput, client: JevClient = 
       policyScores: Object.fromEntries(policyNames.map((name) => [name, response[name]])),
     };
     return evaluateModeration(answer as ModerationAnswer);
-  } catch {
-    throw new ModerationError();
+  } catch (error) {
+    throw new ModerationError(error instanceof JevError ? error.message : undefined);
   }
 }

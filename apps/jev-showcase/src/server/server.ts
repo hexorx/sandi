@@ -3,7 +3,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server, ty
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { choice, createJevClient, request as buildJevRequest } from '@sandi/jev';
+import { choice, createJevClient, JevError, request as buildJevRequest } from '@sandi/jev';
 import { findToolCall } from './tool-calls.js';
 import { decideToolCall } from './tool-safety.js';
 import { triageTicket } from './triage.js';
@@ -150,8 +150,8 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
         ? { mode: 'compare' as const, results: { jev, decider: await runDecider('tool-safety', toolCall, environment) } }
         : { mode: 'single' as const, result: selection === 'decider' ? await runDecider('tool-safety', toolCall, environment) : jev };
       sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
-    } catch {
-      sendJson(response, 502, { error: 'Safety decision is unavailable. Try again.' });
+    } catch (error) {
+      sendJson(response, 502, { error: error instanceof JevError ? error.message : 'Safety decision is unavailable. Try again.' });
     }
     return;
   }
@@ -322,8 +322,10 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
         : { mode: 'single' as const, result: selection === 'jev' ? { requestedEngine: 'jev', engine: 'jev', answer: jev } : decider };
       sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
     } catch (error) {
-      const message = error instanceof Error && error.message.startsWith('Enter a ticket')
+      const message = error instanceof JevError
         ? error.message
+        : error instanceof Error && error.message.startsWith('Enter a ticket')
+          ? error.message
         : 'Unable to triage ticket. Please retry or assign it manually.';
       sendJson(response, 400, { error: message });
     }
