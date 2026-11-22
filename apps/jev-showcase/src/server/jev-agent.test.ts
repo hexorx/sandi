@@ -36,6 +36,20 @@ class RepeatingToolModel extends Model<BaseModelConfig> {
   }
 }
 
+class UnknownToolModel extends Model<BaseModelConfig> {
+  calls = 0;
+  updateConfig(): void {}
+  getConfig(): BaseModelConfig { return { modelId: 'unknown-tool' }; }
+  async *stream(): AsyncIterable<ModelStreamEvent> {
+    this.calls += 1;
+    yield new ModelMessageStartEvent({ type: 'modelMessageStartEvent', role: 'assistant' });
+    yield new ModelContentBlockStartEvent({ type: 'modelContentBlockStartEvent', start: { type: 'toolUseStart', name: 'not_a_tool', toolUseId: crypto.randomUUID() } });
+    yield new ModelContentBlockDeltaEvent({ type: 'modelContentBlockDeltaEvent', delta: { type: 'toolUseInputDelta', input: '{}' } });
+    yield new ModelContentBlockStopEvent({ type: 'modelContentBlockStopEvent' });
+    yield new ModelMessageStopEvent({ type: 'modelMessageStopEvent', stopReason: 'toolUse' });
+  }
+}
+
 describe('Jev gated agent action', () => {
   it('consults Jev before simulating an allowed action and returns an ordered trace', async () => {
     const jev = client('yes', 0.94);
@@ -86,6 +100,21 @@ describe('Jev gated agent action', () => {
     expect(jev.evaluate).toHaveBeenCalledOnce();
     expect(model.calls).toBe(1);
     expect(result.steps.at(-1)?.message).toMatch(/confidence is below the threshold/i);
+  });
+
+  it('returns the capped error when the model reaches the turn limit without a Jev decision', async () => {
+    const jev = client('yes', 0.94);
+    const model = new UnknownToolModel();
+
+    const result = await runJevAgent({ task: 'Prepare export', action: 'Create link', jev, model });
+
+    expect(model.calls).toBe(5);
+    expect(jev.evaluate).not.toHaveBeenCalled();
+    expect(result.outcome).toBe('error');
+    expect(result.steps.at(-1)).toEqual({
+      kind: 'error',
+      message: 'The agent stopped after reaching the maximum of 5 turns. No further Jev checks will be attempted.',
+    });
   });
 
   it('passes cancellation to Jev when the request is aborted', async () => {
