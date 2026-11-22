@@ -147,7 +147,9 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
         }
         return toToolResult(decision);
       } catch (error) {
-        decision = safeErrorResult(error);
+        decision = timeoutSignal.aborted && !options.signal?.aborted
+          ? safeErrorResult('The agent request timed out. Try again.')
+          : safeErrorResult(error);
         steps.push({ kind: 'error', message: decision.message });
         failureController.abort();
         return toToolResult(decision);
@@ -172,7 +174,9 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     stopReason = result.stopReason;
   } catch {
     if (!decision) {
-      decision = safeErrorResult();
+      decision = timeoutSignal.aborted && !options.signal?.aborted
+        ? safeErrorResult('The agent request timed out. Try again.')
+        : safeErrorResult();
       steps.push({ kind: 'error', message: decision.message });
     }
   }
