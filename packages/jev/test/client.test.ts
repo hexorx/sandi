@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import realNoulResponse from "./fixtures/real-noul-response.json" with { type: "json" };
-import { choice, createJevClient, hashRequest, JevError, noul, request, score, validateResponse } from "../src/index.js";
+import recordedTypeSafeResponses from "./fixtures/typesafe-systemone-jev-1.14.0.json" with { type: "json" };
+import { choice, createJevClient, hashRequest, JevError, noul, request, score, validateResponse, type JevRequest, type JevResponse } from "../src/index.js";
 
 const demoRequest = request("A synthetic tool request", {
   safe: noul("Should the tool call be allowed?"),
@@ -20,6 +21,58 @@ describe("typed responses", () => {
 });
 
 describe("request builders", () => {
+  it("normalizes all six recorded TypeSafe route replies", () => {
+    const routeRequests: Array<{ route: string; request: JevRequest; expected: JevResponse }> = [
+      {
+        route: "tool-safety",
+        request: request("synthetic tool", { allowed: noul("Is this safe?"), action: choice("Choose", { allow: "Allow", block: "Block" }) }),
+        expected: { allowed: { value: "yes", probabilities: { yes: 0.88, no: 0.12 } }, action: { value: "allow", probabilities: { allow: 0.93, block: 0.07 } } },
+      },
+      {
+        route: "triage",
+        request: request("synthetic ticket", {
+          category: choice("Choose category", { orders: "Orders", billing: "Billing", account: "Account" }),
+          urgency: score("Rate urgency", ["low", "normal", "high"] as const),
+          queue: choice("Choose queue", { support: "Support", billing: "Billing", fulfillment: "Fulfillment" }),
+        }),
+        expected: {
+          category: { value: "orders", probabilities: { orders: 1, billing: 0, account: 0 } },
+          urgency: { value: "normal", probabilities: { low: 0.11, normal: 0.65, high: 0.24 } },
+          queue: { value: "fulfillment", probabilities: { support: 0.05, billing: 0, fulfillment: 0.95 } },
+        },
+      },
+      { route: "threshold", request: request("synthetic threshold", { decision: choice("Route", { allow: "Allow", block: "Block", review: "Review" }) }), expected: { decision: { value: "allow", probabilities: { allow: 0.99, block: 0, review: 0.01 } } } },
+      {
+        route: "decision-pipeline",
+        request: request("synthetic pipeline", { safety: choice("Safety", { allow: "Allow", block: "Block" }), quality: choice("Quality", { pass: "Pass", review: "Review" }) }),
+        expected: { safety: { value: "allow", probabilities: { allow: 0.84, block: 0.16 } }, quality: { value: "review", probabilities: { pass: 0.13, review: 0.87 } } },
+      },
+      {
+        route: "content-moderation",
+        request: request("synthetic moderation", {
+          outcome: choice("Outcome", { allow: "Allow", flag: "Flag", remove: "Remove" }),
+          harassment: score("Harassment", ["low", "medium", "high"] as const),
+          threats: score("Threats", ["low", "medium", "high"] as const),
+          spam: score("Spam", ["low", "medium", "high"] as const),
+        }),
+        expected: {
+          outcome: { value: "allow", probabilities: { allow: 0.96, flag: 0.03, remove: 0.01 } },
+          harassment: { value: "low", probabilities: { low: 1, medium: 0, high: 0 } },
+          threats: { value: "low", probabilities: { low: 1, medium: 0, high: 0 } },
+          spam: { value: "low", probabilities: { low: 0.93, medium: 0.04, high: 0.03 } },
+        },
+      },
+      { route: "jev-agent", request: request("synthetic agent", { safe: choice("Safe?", { yes: "Yes", no: "No" }) }), expected: { safe: { value: "yes", probabilities: { yes: 0.75, no: 0.25 } } } },
+    ];
+
+    expect(recordedTypeSafeResponses).toHaveLength(routeRequests.length);
+    for (const routeCase of routeRequests) {
+      const recorded = recordedTypeSafeResponses.find(({ route }) => route === routeCase.route);
+      expect(recorded?.status, `${routeCase.route} status`).toBe(200);
+      expect(validateResponse(routeCase.request, recorded?.body)).toEqual(routeCase.expected);
+    }
+  });
+
   it("normalizes the recorded real Jev answers envelope", () => {
     const realRequest = request("synthetic", { safe: noul("Allow this synthetic action?") });
     expect(validateResponse(realRequest, realNoulResponse)).toEqual({

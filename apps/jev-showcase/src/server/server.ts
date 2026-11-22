@@ -3,7 +3,7 @@ import { createServer as createHttpServer, type IncomingMessage, type Server, ty
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { createJevClient } from '@sandi/jev';
+import { createJevClient, JevError } from '@sandi/jev';
 import { findToolCall } from './tool-calls.js';
 import { decideToolCall } from './tool-safety.js';
 import { triageTicket } from './triage.js';
@@ -129,8 +129,8 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       const mode = getRuntimeMode(environment);
       const client = createJevClient({ mode, apiKey: mode === 'live' ? environment.TYPESAFE_API_KEY : undefined, runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' } });
       sendJson(response, 200, await decideToolCall(toolCall, { client }));
-    } catch {
-      sendJson(response, 502, { error: 'Safety decision is unavailable. Try again.' });
+    } catch (error) {
+      sendJson(response, 502, { error: error instanceof JevError ? error.message : 'Safety decision is unavailable. Try again.' });
     }
     return;
   }
@@ -252,8 +252,10 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       const client = createJevClient({ mode, apiKey: environment.TYPESAFE_API_KEY });
       sendJson(response, 200, await triageTicket(ticket, client));
     } catch (error) {
-      const message = error instanceof Error && error.message.startsWith('Enter a ticket')
+      const message = error instanceof JevError
         ? error.message
+        : error instanceof Error && error.message.startsWith('Enter a ticket')
+          ? error.message
         : 'Unable to triage ticket. Please retry or assign it manually.';
       sendJson(response, 400, { error: message });
     }
