@@ -7,6 +7,7 @@ import { ContentModerationPage } from './moderation.js';
 import { ToolSafetyPage } from './tool-safety-page.js';
 import { PiiPhiGuardrailsPage } from './pii-phi-guardrails.js';
 import { DecisionPipelinePage } from './decision-pipeline-page.js';
+import { currentEngineSelection } from './engine-switch.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -42,16 +43,30 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   const [confidence, setConfidence] = useState(62);
   const [allowThreshold, setAllowThreshold] = useState(80);
   const [blockThreshold, setBlockThreshold] = useState(35);
+  const [thresholdExecution, setThresholdExecution] = useState<unknown>();
+  const [thresholdBusy, setThresholdBusy] = useState(false);
   async function triage() {
     setLoading(true); setError(''); setResult(null);
     try {
-      const response = await fetch('/api/triage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket }) });
+      const response = await fetch('/api/triage', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket, ...currentEngineSelection() }) });
       const payload = await response.json() as Record<string, unknown>;
+      if (payload.execution) window.dispatchEvent(new CustomEvent('sandi-engine-result', { detail: payload.execution }));
       if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'Unable to triage ticket. Please retry or assign it manually.');
       setResult(payload);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to triage ticket. Please retry or assign it manually.');
     } finally { setLoading(false); }
+  }
+  async function evaluateThreshold() {
+    setThresholdBusy(true);
+    try {
+      const response = await fetch('/api/threshold/evaluate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scenario: selectedScenario.label, confidence: scenarioConfidence, allowThreshold: allowThreshold / 100, blockThreshold: blockThreshold / 100, ...currentEngineSelection() }) });
+      const payload = await response.json() as { execution?: unknown; error?: string };
+      if (!response.ok || payload.execution === undefined) throw new Error(payload.error ?? 'Threshold evaluation is unavailable.');
+      setThresholdExecution(payload.execution);
+      window.dispatchEvent(new CustomEvent('sandi-engine-result', { detail: payload.execution }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Threshold evaluation is unavailable.'); }
+    finally { setThresholdBusy(false); }
   }
   const answer = (key: string) => result?.[key] as { value: string; probabilities: Record<string, number> } | undefined;
   const percent = (value: number) => `${Math.round(value * 100)}%`;
@@ -199,6 +214,8 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
                 <p className="text-xs font-semibold uppercase tracking-wide">Decision</p><p className="mt-1 text-xl font-semibold capitalize">{decision}</p>
                 <p className="mt-1 text-sm">{decision === 'allow' ? 'Confidence meets the allow cutoff.' : decision === 'block' ? 'Confidence is below the block cutoff.' : 'Send this case for human review.'}</p>
               </div>
+              <button type="button" data-testid="threshold-engine-run" onClick={() => void evaluateThreshold()} disabled={thresholdBusy} className="mt-4 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">{thresholdBusy ? 'Evaluating…' : 'Evaluate with selected engine'}</button>
+              {thresholdExecution !== undefined ? <pre data-testid="threshold-engine-result" className="mt-3 max-h-48 overflow-auto rounded-xl bg-slate-950 p-3 text-xs text-white">{JSON.stringify(thresholdExecution, null, 2)}</pre> : null}
               <p className="mt-2 sr-only">Scenario confidence is {Math.round(scenarioConfidence * 100)}%.</p>
             </div>
             <div className="space-y-6">

@@ -3,15 +3,16 @@ import { createServer as createHttpServer, type IncomingMessage, type Server, ty
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { createJevClient, JevError } from '@sandi/jev';
+import { choice, createJevClient, JevError, request as buildJevRequest } from '@sandi/jev';
 import { findToolCall } from './tool-calls.js';
 import { decideToolCall } from './tool-safety.js';
 import { triageTicket } from './triage.js';
 import { runModeration, ModerationError } from './moderation.js';
 import { runGuardrails, type GuardrailPolicy } from './pii-phi.js';
-import type { DecisionEngine, DecisionResult, EngineRun, EngineSelection } from '../decision-engine-contract.js';
+import type { EngineRun, EngineSelection } from '../decision-engine-contract.js';
 import { createJevClientFromEnvironment, runJevAgent } from './jev-agent.js';
 import { runDecisionPipeline } from './decision-pipeline.js';
+import { requestedEngine, runDecider } from './decider.js';
 
 export type RuntimeMode = 'mock' | 'live';
 
@@ -88,6 +89,11 @@ function createModerationClient(environment: NodeJS.ProcessEnv) {
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
   if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/jev-agent/run') {
+    const disconnectController = new AbortController();
+    response.once('close', () => {
+      if (!response.writableEnded) disconnectController.abort();
+    });
+    const requestSignal = AbortSignal.any([disconnectController.signal, AbortSignal.timeout(30_000)]);
     let body: unknown;
     try {
       body = await readJson(request);
@@ -99,16 +105,21 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
       return;
     }
-    const input = body as { task?: unknown; action?: unknown };
+    const input = body as { task?: unknown; action?: unknown; engine?: unknown; compare?: unknown };
     if (typeof input.task !== 'string' || typeof input.action !== 'string' || !input.task.trim() || !input.action.trim() || input.task.length > 1000 || input.action.length > 1000) {
       sendJson(response, 400, { error: 'Task and proposed action must be between 1 and 1000 characters.' });
       return;
     }
     try {
-      const result = await runJevAgent({ task: input.task.trim(), action: input.action.trim(), jev: createJevClientFromEnvironment(environment), environment });
-      sendJson(response, 200, result);
+      const selection = requestedEngine(input.engine, input.compare);
+      const jev = selection === 'decider' ? undefined : await runJevAgent({ task: input.task.trim(), action: input.action.trim(), jev: createJevClientFromEnvironment(environment), environment, signal: requestSignal });
+      const decider = selection === 'jev' ? undefined : await runDecider('jev-agent', { task: input.task.trim(), action: input.action.trim() }, environment, requestSignal);
+      const execution = selection === 'compare'
+        ? { mode: 'compare' as const, results: { jev: { requestedEngine: 'jev', engine: 'jev', answer: jev }, decider } }
+        : { mode: 'single' as const, result: selection === 'jev' ? { requestedEngine: 'jev', engine: 'jev', answer: jev } : decider };
+      if (!requestSignal.aborted) sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
     } catch {
-      sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
+      if (!requestSignal.aborted) sendJson(response, 502, { error: 'The agent could not complete this run. Try again.' });
     }
     return;
   }
@@ -120,7 +131,9 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     try {
       const body = await readJson(request);
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
-      const toolCallId = (body as { toolCallId?: unknown }).toolCallId;
+      const input = body as { toolCallId?: unknown; engine?: unknown; compare?: unknown };
+      const selection = requestedEngine(input.engine, input.compare);
+      const toolCallId = input.toolCallId;
       const toolCall = typeof toolCallId === 'string' ? findToolCall(toolCallId) : undefined;
       if (!toolCall) {
         sendJson(response, 400, { error: 'Choose a valid sample tool call.' });
@@ -128,7 +141,15 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       }
       const mode = getRuntimeMode(environment);
       const client = createJevClient({ mode, apiKey: mode === 'live' ? environment.TYPESAFE_API_KEY : undefined, runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' } });
-      sendJson(response, 200, await decideToolCall(toolCall, { client }));
+      const jevRun = async () => {
+        const result = await decideToolCall(toolCall, { client });
+        return { ...result, requestedEngine: 'jev' as const, engine: 'jev' as const, latencyMs: 0 };
+      };
+      const jev = selection === 'decider' ? undefined : await jevRun();
+      const execution = selection === 'compare'
+        ? { mode: 'compare' as const, results: { jev, decider: await runDecider('tool-safety', toolCall, environment) } }
+        : { mode: 'single' as const, result: selection === 'decider' ? await runDecider('tool-safety', toolCall, environment) : jev };
+      sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
     } catch (error) {
       sendJson(response, 502, { error: error instanceof JevError ? error.message : 'Safety decision is unavailable. Try again.' });
     }
@@ -139,11 +160,16 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
     try {
       const body = await readJson(request);
       if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
-      const input = body as { content?: unknown; policy?: unknown };
+      const input = body as { content?: unknown; policy?: unknown; engine?: unknown; compare?: unknown };
       if (typeof input.content !== 'string' || typeof input.policy !== 'string') throw new TypeError('Content and policy are required.');
+      const selection = requestedEngine(input.engine, input.compare);
       const client = createModerationClient(environment);
-      const result = await runModeration({ content: input.content, policy: input.policy }, client);
-      sendJson(response, 200, { requestId, mode: client.mode === 'live' ? 'live' : 'mock', result });
+      const jev = selection === 'decider' ? undefined : await runModeration({ content: input.content, policy: input.policy }, client);
+      const decider = selection === 'jev' ? undefined : await runDecider('content-moderation', input, environment);
+      const execution = selection === 'compare'
+        ? { mode: 'compare' as const, results: { jev: { requestedEngine: 'jev', engine: 'jev', answer: jev }, decider } }
+        : { mode: 'single' as const, result: selection === 'jev' ? { requestedEngine: 'jev', engine: 'jev', answer: jev } : decider };
+      sendJson(response, 200, { requestId, mode: client.mode === 'live' ? 'live' : 'mock', ...(selection === 'jev' ? { result: jev } : {}), execution });
     } catch (error) {
       if (error instanceof ModerationError) {
         sendJson(response, 502, { requestId, error: { code: error.code, message: error.message } });
@@ -156,14 +182,18 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
   }
   if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run') {
     const requestId = randomUUID();
+    const disconnectController = new AbortController();
+    response.once('close', () => {
+      if (!response.writableEnded) disconnectController.abort();
+    });
+    const requestSignal = AbortSignal.any([disconnectController.signal, AbortSignal.timeout(30_000)]);
     try {
       const body = await readJson(request);
       if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Request must be a JSON object.');
       const input = body as { text?: unknown; policy?: unknown; engine?: unknown; compare?: unknown };
       if (typeof input.text !== 'string' || input.text.trim().length === 0 || input.text.length > 5000) throw new TypeError('Text must be between 1 and 5000 characters.');
       if (input.policy !== 'strict' && input.policy !== 'redact-medium') throw new TypeError('Choose a supported guardrail policy.');
-      if (input.engine !== 'jev' && input.engine !== 'decider') throw new TypeError('Choose Jev or Decider.');
-      if (typeof input.compare !== 'boolean') throw new TypeError('Choose single or compare mode.');
+      const selection = requestedEngine(input.engine, input.compare);
       let result: ReturnType<typeof runGuardrails>;
       try {
         result = runGuardrails(input.text, input.policy as GuardrailPolicy);
@@ -172,35 +202,33 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
         return;
       }
       const agentInput = result.action === 'allow' ? input.text : result.action === 'redact' ? result.redactedText : undefined;
-      const received = agentInput === undefined ? null : { engine: input.engine, mode: 'mock' as const, text: agentInput, response: `Mock ${input.engine === 'jev' ? 'Jev' : 'Decider'} agent received the guarded sample.` };
-      const mockEngine: DecisionEngine = {
-        id: 'mock',
-        async decide(): Promise<DecisionResult> {
-          return { answer: { guardrails: result, received }, confidence: {}, explanation: 'Local mock simulation only.' };
-        },
+      const run = async (requestedEngine: EngineSelection): Promise<EngineRun> => {
+        if (requestedEngine === 'decider') {
+          if (agentInput === undefined) return { requestedEngine, engine: 'mock', answer: { guardrails: result, received: null }, confidence: {}, latencyMs: 0, fallback: { reason: 'unconfigured' } };
+          const modelRun = await runDecider('pii-phi-guardrails', { text: agentInput }, environment, requestSignal);
+          return { ...modelRun, requestedEngine, answer: { guardrails: result, received: { engine: 'decider', mode: modelRun.engine === 'decider' ? 'live' : 'mock', text: agentInput, response: modelRun.explanation ?? 'Decider completed the guarded sample.' } } };
+        }
+        const client = createJevClientFromEnvironment(environment);
+        const agentResult = agentInput === undefined ? undefined : await runJevAgent({ task: 'Check the guardrail-approved sample before continuing.', action: agentInput, jev: client, environment, signal: requestSignal });
+        return { requestedEngine, engine: client.mode === 'live' ? 'jev' : 'mock', answer: { guardrails: result, received: agentInput === undefined ? null : { engine: 'jev', mode: client.mode === 'live' ? 'live' : 'mock', text: agentInput, response: agentResult?.steps.at(-1)?.message ?? 'Jev checked the guarded sample.' } }, confidence: {}, latencyMs: 0, ...(client.mode === 'live' ? {} : { fallback: { reason: 'unconfigured' as const } }) };
       };
-      const run = async (requestedEngine: EngineSelection): Promise<EngineRun> => ({
-        ...(await mockEngine.decide({ useCase: 'pii-phi-guardrails', payload: { action: result.action } })),
-        requestedEngine,
-        engine: 'mock',
-        latencyMs: 0,
-        fallback: { reason: 'unconfigured' },
-      });
-      const execution = input.compare
+      const execution = selection === 'compare'
         ? { mode: 'compare' as const, results: Object.fromEntries(await Promise.all((['jev', 'decider'] as const).map(async (requestedEngine) => [requestedEngine, await run(requestedEngine)]))) }
-        : { mode: 'single' as const, result: await run(input.engine as EngineSelection) };
-      sendJson(response, 200, {
+        : { mode: 'single' as const, result: await run(selection) };
+      if (!requestSignal.aborted) sendJson(response, 200, {
         requestId,
-        mode: 'mock',
+        mode: getRuntimeMode(environment),
         execution,
       });
     } catch (error) {
-      const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
-      sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+      if (!requestSignal.aborted) {
+        const message = error instanceof TypeError ? error.message : 'Request body must be valid JSON.';
+        sendJson(response, 400, { requestId, error: { code: 'VALIDATION_ERROR', message } });
+      }
     }
     return;
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/decision-pipeline/run' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(request.method === 'POST' && (requestUrl.pathname === '/api/triage' || requestUrl.pathname === '/api/threshold/evaluate' || requestUrl.pathname === '/api/decision-pipeline/run' || requestUrl.pathname === '/api/use-cases/content-moderation/run' || requestUrl.pathname === '/api/use-cases/pii-phi-guardrails/run' || requestUrl.pathname === '/api/use-cases/jev-agent/run'))) {
     sendJson(response, 405, { error: 'Method not allowed' });
     return;
   }
@@ -217,20 +245,55 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
       sendJson(response, 405, { error: 'Method not allowed' });
       return;
     }
-    if (getRuntimeMode(environment) === 'live') {
-      sendJson(response, 503, { error: 'Live decision pipeline is not configured. Switch to mock mode or configure the pipeline provider.' });
-      return;
-    }
     try {
       const body = await readJson(request);
       if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Provide an item and threshold.');
-      const input = body as { item?: unknown; threshold?: unknown };
+      const input = body as { item?: unknown; threshold?: unknown; engine?: unknown; compare?: unknown };
       if (typeof input.item !== 'string' || typeof input.threshold !== 'number') throw new TypeError('Provide an item and threshold.');
+      const selection = requestedEngine(input.engine, input.compare);
       const result = await runDecisionPipeline({ item: input.item, threshold: input.threshold });
-      sendJson(response, 200, { ...result, mode: 'mock' });
+      const jevRun = async (): Promise<EngineRun> => {
+        const client = createJevClient({ mode: getRuntimeMode(environment), apiKey: environment.TYPESAFE_API_KEY, runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' } });
+        const evaluated = client.mode === 'live' ? await client.evaluate(buildJevRequest(`Evaluate the decision pipeline item: ${input.item}`, {
+          safety: choice('Should the item pass the safety gate?', { allow: 'The item is safe.', block: 'The item is unsafe.' }),
+          quality: choice('Does the item pass the quality gate?', { pass: 'The item is clear and supported.', review: 'The item needs human review.' }),
+        })) : undefined;
+        return { requestedEngine: 'jev', engine: client.mode === 'live' ? 'jev' : 'mock', answer: { ...result, ...(evaluated ? { jevDecision: evaluated } : {}) }, confidence: {}, latencyMs: 0, ...(client.mode === 'live' ? {} : { fallback: { reason: 'unconfigured' as const } }) };
+      };
+      const execution = selection === 'compare'
+        ? { mode: 'compare' as const, results: { jev: await jevRun(), decider: await runDecider('decision-pipeline', input, environment) } }
+        : selection === 'decider'
+          ? { mode: 'single' as const, result: await runDecider('decision-pipeline', input, environment) }
+          : { mode: 'single' as const, result: await jevRun() };
+      const selectedJeV = selection === 'jev' ? execution.mode === 'single' ? execution.result : undefined : undefined;
+      sendJson(response, 200, { ...(selection === 'jev' ? { ...result, mode: getRuntimeMode(environment), jevDecision: selectedJeV?.answer } : {}), execution });
     } catch (error) {
       const message = error instanceof TypeError || error instanceof Error ? error.message : 'Pipeline request is invalid.';
       sendJson(response, 400, { error: message });
+    }
+    return;
+  }
+  if (requestUrl.pathname === '/api/threshold/evaluate') {
+    if (request.method !== 'POST') { sendJson(response, 405, { error: 'Method not allowed' }); return; }
+    try {
+      const body = await readJson(request);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError('Provide confidence and thresholds.');
+      const input = body as { confidence?: unknown; allowThreshold?: unknown; blockThreshold?: unknown; scenario?: unknown; engine?: unknown; compare?: unknown };
+      if (![input.confidence, input.allowThreshold, input.blockThreshold].every((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1)) throw new TypeError('Provide confidence and thresholds between 0 and 1.');
+      const selection = requestedEngine(input.engine, input.compare);
+      const payload = { scenario: typeof input.scenario === 'string' ? input.scenario : 'synthetic scenario', confidence: input.confidence, allowThreshold: input.allowThreshold, blockThreshold: input.blockThreshold };
+      const decider = () => runDecider('threshold-playground', payload, environment);
+      const jev = async (): Promise<EngineRun> => {
+        const client = createJevClient({ mode: getRuntimeMode(environment), apiKey: environment.TYPESAFE_API_KEY, runtime: { nodeEnv: environment.NODE_ENV, ci: environment.CI === 'true' } });
+        const result = await client.evaluate(buildJevRequest(`Synthetic confidence ${input.confidence}; allow cutoff ${input.allowThreshold}; block cutoff ${input.blockThreshold}.`, { decision: choice('How should the threshold playground route this synthetic case?', { allow: 'Confidence meets the allow cutoff.', block: 'Confidence is below the block cutoff.', review: 'Confidence falls between cutoffs and needs review.' }) }));
+        return { requestedEngine: 'jev', engine: client.mode === 'live' ? 'jev' : 'mock', answer: result.decision, confidence: result.decision.probabilities, explanation: result.decision.value, latencyMs: 0, ...(client.mode === 'live' ? {} : { fallback: { reason: 'unconfigured' as const } }) };
+      };
+      const execution = selection === 'compare'
+        ? { mode: 'compare' as const, results: { jev: await jev(), decider: await decider() } }
+        : { mode: 'single' as const, result: selection === 'jev' ? await jev() : await decider() };
+      sendJson(response, 200, { execution });
+    } catch (error) {
+      sendJson(response, 400, { error: error instanceof Error ? error.message : 'Threshold request is invalid.' });
     }
     return;
   }
@@ -247,10 +310,17 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse,
         return;
       }
       const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      const ticket = typeof body === 'object' && body !== null && 'ticket' in body && typeof body.ticket === 'string' ? body.ticket : '';
+      const input = typeof body === 'object' && body !== null && !Array.isArray(body) ? body as { ticket?: unknown; engine?: unknown; compare?: unknown } : {};
+      const ticket = typeof input.ticket === 'string' ? input.ticket : '';
+      const selection = requestedEngine(input.engine, input.compare);
       const mode = getRuntimeMode(environment);
       const client = createJevClient({ mode, apiKey: environment.TYPESAFE_API_KEY });
-      sendJson(response, 200, await triageTicket(ticket, client));
+      const jev = selection === 'decider' ? undefined : await triageTicket(ticket, client);
+      const decider = selection === 'jev' ? undefined : await runDecider('triage', { ticket }, environment);
+      const execution = selection === 'compare'
+        ? { mode: 'compare' as const, results: { jev: { requestedEngine: 'jev', engine: 'jev', answer: jev }, decider } }
+        : { mode: 'single' as const, result: selection === 'jev' ? { requestedEngine: 'jev', engine: 'jev', answer: jev } : decider };
+      sendJson(response, 200, { ...(selection === 'jev' ? jev : {}), execution });
     } catch (error) {
       const message = error instanceof JevError
         ? error.message
