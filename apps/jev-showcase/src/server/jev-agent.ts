@@ -1,5 +1,6 @@
 import {
   Agent,
+  AfterToolsEvent,
   FunctionTool,
   Model,
   ModelContentBlockDeltaEvent,
@@ -163,6 +164,9 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     model: options.model ?? (selectedModel.kind === 'scripted' ? new ScriptedAgentModel() : selectedModel.model),
     tools: [gatedAction],
     systemPrompt: 'You are a careful agent. Use jev_gated_action for the proposed action. Never claim an action was performed unless the tool reports it was simulated.',
+  });
+  agent.addHook(AfterToolsEvent, (event) => {
+    if (decision && decision.outcome !== 'error') event.endTurn = decision.message;
   });
 
   let stopReason: string | undefined;

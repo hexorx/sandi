@@ -9,7 +9,8 @@ import {
   type ModelStreamEvent,
 } from '@strands-agents/sdk';
 import { describe, expect, it, vi } from 'vitest';
-import type { JevClient } from '@sandi/jev';
+import { choice, request, validateResponse, type JevClient } from '@sandi/jev';
+import recordedTypeSafeResponses from '../../../../packages/jev/test/fixtures/typesafe-systemone-jev-1.14.0.json' with { type: 'json' };
 import { runJevAgent } from './jev-agent.js';
 
 function client(answer: 'yes' | 'no', confidence: number): JevClient {
@@ -22,9 +23,11 @@ function client(answer: 'yes' | 'no', confidence: number): JevClient {
 }
 
 class RepeatingToolModel extends Model<BaseModelConfig> {
+  calls = 0;
   updateConfig(): void {}
   getConfig(): BaseModelConfig { return { modelId: 'repeating-tool' }; }
   async *stream(): AsyncIterable<ModelStreamEvent> {
+    this.calls += 1;
     yield new ModelMessageStartEvent({ type: 'modelMessageStartEvent', role: 'assistant' });
     yield new ModelContentBlockStartEvent({ type: 'modelContentBlockStartEvent', start: { type: 'toolUseStart', name: 'jev_gated_action', toolUseId: crypto.randomUUID() } });
     yield new ModelContentBlockDeltaEvent({ type: 'modelContentBlockDeltaEvent', delta: { type: 'toolUseInputDelta', input: '{}' } });
@@ -62,12 +65,27 @@ describe('Jev gated agent action', () => {
     expect(JSON.stringify(result)).not.toContain('provider detail');
   });
 
-  it('caps repeated tool use at five agent turns', async () => {
-    const jev = client('yes', 0.94);
-    const result = await runJevAgent({ task: 'Prepare export', action: 'Create link', jev, model: new RepeatingToolModel() });
-    expect(jev.evaluate).toHaveBeenCalledTimes(5);
-    expect(result.outcome).toBe('error');
-    expect(result.steps.at(-1)?.message).toMatch(/maximum of 5 turns/i);
+  it('returns a final decision from the recorded TypeSafe reply even when the model repeats the tool call', async () => {
+    const recorded = recordedTypeSafeResponses.find(({ route }) => route === 'jev-agent');
+    const jevRequest = request('Task: Prepare export\nProposed action: Create link', {
+      safe: choice('Is this proposed action safe and authorized to simulate?', {
+        yes: 'Safe and authorized; the action may be simulated.',
+        no: 'Unsafe, unauthorized, or insufficiently supported; refuse the action.',
+      }),
+    });
+    const jev: JevClient = {
+      mode: 'replay',
+      evaluate: vi.fn(async () => validateResponse(jevRequest, recorded?.body)) as unknown as JevClient['evaluate'],
+    };
+    const model = new RepeatingToolModel();
+
+    const result = await runJevAgent({ task: 'Prepare export', action: 'Create link', jev, model });
+
+    expect(result.outcome).toBe('refused');
+    expect(result.confidence).toBe(0.75);
+    expect(jev.evaluate).toHaveBeenCalledOnce();
+    expect(model.calls).toBe(1);
+    expect(result.steps.at(-1)?.message).toMatch(/confidence is below the threshold/i);
   });
 
   it('passes cancellation to Jev when the request is aborted', async () => {
