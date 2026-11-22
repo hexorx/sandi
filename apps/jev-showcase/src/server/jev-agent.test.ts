@@ -1,5 +1,4 @@
 import {
-  Agent,
   Model,
   ModelContentBlockDeltaEvent,
   ModelContentBlockStartEvent,
@@ -31,6 +30,20 @@ class RepeatingToolModel extends Model<BaseModelConfig> {
     this.calls += 1;
     yield new ModelMessageStartEvent({ type: 'modelMessageStartEvent', role: 'assistant' });
     yield new ModelContentBlockStartEvent({ type: 'modelContentBlockStartEvent', start: { type: 'toolUseStart', name: 'jev_gated_action', toolUseId: crypto.randomUUID() } });
+    yield new ModelContentBlockDeltaEvent({ type: 'modelContentBlockDeltaEvent', delta: { type: 'toolUseInputDelta', input: '{}' } });
+    yield new ModelContentBlockStopEvent({ type: 'modelContentBlockStopEvent' });
+    yield new ModelMessageStopEvent({ type: 'modelMessageStopEvent', stopReason: 'toolUse' });
+  }
+}
+
+class UnknownToolModel extends Model<BaseModelConfig> {
+  calls = 0;
+  updateConfig(): void {}
+  getConfig(): BaseModelConfig { return { modelId: 'unknown-tool' }; }
+  async *stream(): AsyncIterable<ModelStreamEvent> {
+    this.calls += 1;
+    yield new ModelMessageStartEvent({ type: 'modelMessageStartEvent', role: 'assistant' });
+    yield new ModelContentBlockStartEvent({ type: 'modelContentBlockStartEvent', start: { type: 'toolUseStart', name: 'not_a_tool', toolUseId: crypto.randomUUID() } });
     yield new ModelContentBlockDeltaEvent({ type: 'modelContentBlockDeltaEvent', delta: { type: 'toolUseInputDelta', input: '{}' } });
     yield new ModelContentBlockStopEvent({ type: 'modelContentBlockStopEvent' });
     yield new ModelMessageStopEvent({ type: 'modelMessageStopEvent', stopReason: 'toolUse' });
@@ -91,18 +104,17 @@ describe('Jev gated agent action', () => {
 
   it('returns the capped error when the model reaches the turn limit without a Jev decision', async () => {
     const jev = client('yes', 0.94);
-    const invoke = vi.spyOn(Agent.prototype, 'invoke').mockResolvedValue({ stopReason: 'limitTurns' } as Awaited<ReturnType<Agent['invoke']>>);
+    const model = new UnknownToolModel();
 
-    const result = await runJevAgent({ task: 'Prepare export', action: 'Create link', jev });
+    const result = await runJevAgent({ task: 'Prepare export', action: 'Create link', jev, model });
 
-    expect(invoke).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ limits: { turns: 5 } }));
+    expect(model.calls).toBe(5);
     expect(jev.evaluate).not.toHaveBeenCalled();
     expect(result.outcome).toBe('error');
     expect(result.steps.at(-1)).toEqual({
       kind: 'error',
       message: 'The agent stopped after reaching the maximum of 5 turns. No further Jev checks will be attempted.',
     });
-    invoke.mockRestore();
   });
 
   it('passes cancellation to Jev when the request is aborted', async () => {
