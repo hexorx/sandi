@@ -34,7 +34,13 @@ interface RunJevAgentOptions {
   jev: JevClient;
   threshold?: number;
   environment?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  model?: Model<BaseModelConfig>;
 }
+
+export const JEV_AGENT_MAX_TURNS = 5;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 interface AgentDecision {
   outcome: JevAgentResult['outcome'];
@@ -72,8 +78,8 @@ class ScriptedAgentModel extends Model<BaseModelConfig> {
   }
 }
 
-function safeErrorResult(): AgentDecision {
-  return { outcome: 'error', message: 'Jev could not evaluate this action. Try again.' };
+function safeErrorResult(message = 'Jev could not evaluate this action. Try again.'): AgentDecision {
+  return { outcome: 'error', message };
 }
 
 function toToolResult(decision: AgentDecision): JSONValue {
@@ -92,11 +98,22 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     { kind: 'plan', message: 'Ask Jev to check the proposed action before simulating it.' },
   ];
   let decision: AgentDecision | undefined;
+  let toolIterations = 0;
+  const failureController = new AbortController();
+  const timeoutSignal = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
+  const cancelSignal = AbortSignal.any([timeoutSignal, failureController.signal, ...(options.signal ? [options.signal] : [])]);
   const gatedAction = new FunctionTool({
     name: 'jev_gated_action',
     description: 'Check the proposed action with Jev, then simulate it only when Jev allows with sufficient confidence.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    callback: async () => {
+    callback: async (_input, context) => {
+      if (toolIterations >= JEV_AGENT_MAX_TURNS) {
+        decision = safeErrorResult(`The agent stopped after reaching the maximum of ${JEV_AGENT_MAX_TURNS} turns. No further Jev checks will be attempted.`);
+        steps.push({ kind: 'error', message: decision.message });
+        failureController.abort();
+        return toToolResult(decision);
+      }
+      toolIterations += 1;
       try {
         const result = await options.jev.evaluate(request(
           `Task: ${options.task}\nProposed action: ${options.action}`,
@@ -104,7 +121,7 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
             yes: 'Safe and authorized; the action may be simulated.',
             no: 'Unsafe, unauthorized, or insufficiently supported; refuse the action.',
           }) },
-        ));
+        ), { signal: context.cancelSignal });
         const answer = result.safe;
         const probabilities = answer.probabilities;
         const allowed = answer.value === 'yes' && probabilities.yes >= threshold;
@@ -125,8 +142,11 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
         }
         return toToolResult(decision);
       } catch {
-        decision = safeErrorResult();
+        decision = timeoutSignal.aborted
+          ? safeErrorResult('The agent request timed out. Try again.')
+          : safeErrorResult();
         steps.push({ kind: 'error', message: decision.message });
+        failureController.abort();
         return toToolResult(decision);
       }
     },
@@ -135,13 +155,18 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
   const environment = options.environment ?? process.env;
   const selectedModel = createModelFromEnvironment(environment);
   const agent = new Agent({
-    model: selectedModel.kind === 'scripted' ? new ScriptedAgentModel() : selectedModel.model,
+    model: options.model ?? (selectedModel.kind === 'scripted' ? new ScriptedAgentModel() : selectedModel.model),
     tools: [gatedAction],
     systemPrompt: 'You are a careful agent. Use jev_gated_action for the proposed action. Never claim an action was performed unless the tool reports it was simulated.',
   });
 
+  let stopReason: string | undefined;
   try {
-    await agent.invoke(`Task: ${options.task}\nProposed action: ${options.action}\nUse the Jev safety tool before responding.`);
+    const result = await agent.invoke(`Task: ${options.task}\nProposed action: ${options.action}\nUse the Jev safety tool before responding.`, {
+      cancelSignal,
+      limits: { turns: JEV_AGENT_MAX_TURNS },
+    });
+    stopReason = result.stopReason;
   } catch {
     if (!decision) {
       decision = safeErrorResult();
@@ -149,8 +174,16 @@ export async function runJevAgent(options: RunJevAgentOptions): Promise<JevAgent
     }
   }
 
+  if (stopReason === 'limitTurns') {
+    decision = safeErrorResult(`The agent stopped after reaching the maximum of ${JEV_AGENT_MAX_TURNS} turns. No further Jev checks will be attempted.`);
+    steps.push({ kind: 'error', message: decision.message });
+  }
+  if (!decision && timeoutSignal.aborted && !options.signal?.aborted) {
+    decision = safeErrorResult('The agent request timed out. Try again.');
+    steps.push({ kind: 'error', message: decision.message });
+  }
   if (!decision) {
-    decision = { outcome: 'error', message: 'The agent did not complete a Jev safety check.' };
+    decision = { outcome: 'error', message: `The agent stopped before completing a Jev safety check (maximum ${JEV_AGENT_MAX_TURNS} turns).` };
     steps.push({ kind: 'error', message: decision.message });
   }
   return {
