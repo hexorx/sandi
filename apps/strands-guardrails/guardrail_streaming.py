@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
 from guardrails import blocked, inspect
+
+
+VERDICT_MARKER = "\x1eSANDI_GUARDRAIL:"
 
 
 def _field(value: Any, key: str, default: Any = None) -> Any:
@@ -47,6 +51,7 @@ def verdict_chunk(chunks: list[Any], results: list[dict[str, str]]) -> dict[str,
         ),
         "guardrails": results,
     }
+    verdict_data = json.dumps(verdict, separators=(",", ":"))
     return {
         "id": _field(last, "id", "guardrail-verdict"),
         "object": _field(last, "object", "chat.completion.chunk"),
@@ -55,7 +60,7 @@ def verdict_chunk(chunks: list[Any], results: list[dict[str, str]]) -> dict[str,
         "choices": [
             {
                 "index": index,
-                "delta": {},
+                "delta": {"content": f"{VERDICT_MARKER}{verdict_data}"},
                 "finish_reason": "content_filter" if decision == "block" else "stop",
             }
             for index in indices

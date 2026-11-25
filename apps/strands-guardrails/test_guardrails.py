@@ -1,8 +1,11 @@
+import json
 import unittest
 
 from guardrails import blocked, inspect
+from guardrail_streaming import VERDICT_MARKER
 from litellm_guardrail import LocalPatternGuardrail
-from streaming import demo_events
+from main import _without_verdict_marker
+from streaming import GuardedAnswer, ProxyGuardrailBlocked, demo_events
 
 
 class GuardrailTests(unittest.TestCase):
@@ -69,6 +72,20 @@ class LiteLLMGuardrailTests(unittest.IsolatedAsyncioTestCase):
         verdict = result[0]["guardrail_verdict"]
         self.assertEqual(verdict["decision"], "block")
         self.assertEqual(verdict["guardrails"][0]["name"], "email detector")
+        marker = result[0]["choices"][0]["delta"]["content"]
+        self.assertTrue(marker.startswith(VERDICT_MARKER))
+        self.assertEqual(json.loads(marker[len(VERDICT_MARKER):]), verdict)
+
+
+class ProxyVerdictAdapterTests(unittest.TestCase):
+    def test_strands_marker_is_removed_from_answer_and_adapted(self):
+        verdict = {"guardrail_name": "local-pattern-guardrail", "decision": "allow", "guardrails": []}
+        text = f"Safe answer.{VERDICT_MARKER}{json.dumps(verdict)}"
+
+        answer, received_verdict = _without_verdict_marker(text)
+
+        self.assertEqual(answer, "Safe answer.")
+        self.assertEqual(received_verdict, verdict)
 
 
 class StreamingTests(unittest.IsolatedAsyncioTestCase):
@@ -87,7 +104,17 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_blocked_output_emits_details_without_leaking_tokens(self):
         async def answer_with_email():
-            return "The fictional contact is demo@example.test."
+            return GuardedAnswer(
+                "The fictional contact is demo@example.test.",
+                {
+                    "guardrail_name": "local-pattern-guardrail",
+                    "decision": "block",
+                    "details": "Email address detected.",
+                    "guardrails": [{
+                        "name": "email detector", "decision": "block", "details": "Email address detected.",
+                    }],
+                },
+            )
 
         events = [chunk.decode() async for chunk in demo_events(
             "Write a fictional memo.", mock=False, get_answer=answer_with_email,
@@ -98,6 +125,27 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"stage":"output"', verdict)
         self.assertIn('"name":"email detector","decision":"block"', verdict)
         self.assertNotIn("demo@example.test", "".join(events))
+
+    async def test_live_input_block_adapts_proxy_verdict_without_local_reinspection(self):
+        verdict = {
+            "guardrail_name": "local-pattern-guardrail",
+            "decision": "block",
+            "details": "Email detector blocked input.",
+            "guardrails": [{
+                "name": "email detector", "decision": "block", "details": "Email detector blocked input.",
+            }],
+        }
+
+        async def blocked_by_proxy():
+            raise ProxyGuardrailBlocked(verdict)
+
+        events = [chunk.decode() async for chunk in demo_events(
+            "This prompt passes local inspection.", mock=False, get_answer=blocked_by_proxy,
+        )]
+
+        self.assertFalse(any("event: token" in chunk for chunk in events))
+        self.assertIn('"stage":"input"', events[0])
+        self.assertIn('"decision":"block"', events[0])
 
 
 if __name__ == "__main__":
