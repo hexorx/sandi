@@ -78,5 +78,8 @@ async def stream_with_verdict(response: AsyncIterator[Any]) -> AsyncIterator[Any
     for chunk in chunks[:-1]:
         yield chunk
     final_chunk = _chunk_dict(chunks[-1])
+    for choice in final_chunk.get("choices", []):
+        if choice.get("finish_reason") is None:
+            choice["finish_reason"] = "stop"
     final_chunk["guardrail_verdict"] = verdict["guardrail_verdict"]
     yield final_chunk

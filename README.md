@@ -40,6 +40,8 @@ For streamed chat completions, the final OpenAI-compatible chunk carries a `guar
 
 The Sandi SSE endpoint retains `token`, `guardrail`, and `done` event names for its UI. The checkbox runs a deterministic offline mock without calling the model; live calls use the LiteLLM proxy policy. Model output is held until screened.
 
+The LiteLLM service mounts its config and the two guardrail Python modules as individual files under `/app`, preserving the image's `/app/docker/prod_entrypoint.sh`.
+
 SSE event names are `token`, `guardrail`, and `done`. `guardrail` carries `{stage, decision, guardrails:[{name, decision, details}]}`. Model output is withheld until screened.
 
 Docker (from repo root):
