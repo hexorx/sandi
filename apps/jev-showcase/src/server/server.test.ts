@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from './server.js';
 
 let activeServer: ReturnType<typeof createServer> | undefined;
+let activeUpstream: ReturnType<typeof createHttpServer> | undefined;
 
 afterEach(async () => {
   if (activeServer?.listening) {
@@ -10,10 +12,16 @@ afterEach(async () => {
     });
   }
   activeServer = undefined;
+  if (activeUpstream?.listening) {
+    await new Promise<void>((resolve, reject) => {
+      activeUpstream?.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+  activeUpstream = undefined;
 });
 
-async function listen(): Promise<string> {
-  activeServer = createServer({});
+async function listen(environment: NodeJS.ProcessEnv = {}): Promise<string> {
+  activeServer = createServer(environment);
   await new Promise<void>((resolve) => activeServer?.listen(0, '127.0.0.1', resolve));
   const address = activeServer.address();
   if (!address || typeof address === 'string') throw new Error('Server did not bind to a TCP port');
@@ -21,6 +29,32 @@ async function listen(): Promise<string> {
 }
 
 describe('jev showcase server', () => {
+  it('streams the sidecar SSE extension through the same origin', async () => {
+    activeUpstream = createHttpServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write('event: token\ndata: {"text":"safe"}\n\n');
+      response.end('event: guardrail\ndata: {"stage":"output","decision":"allow"}\n\n');
+    });
+    await new Promise<void>((resolve) => activeUpstream?.listen(0, '127.0.0.1', resolve));
+    const address = activeUpstream.address();
+    if (!address || typeof address === 'string') throw new Error('Sidecar did not bind to a TCP port');
+    const baseUrl = await listen({ STRANDS_GUARDRAILS_URL: `http://127.0.0.1:${address.port}` });
+    const response = await fetch(`${baseUrl}/api/strands-guardrails/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'safe prompt', mock: true }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    expect(await response.text()).toContain('event: guardrail');
+  });
+
+  it('returns a safe unavailable response if the sidecar is not configured', async () => {
+    const response = await fetch(`${await listen()}/api/strands-guardrails/run`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'safe prompt', mock: true }),
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('Start the Strands guardrails') });
+  });
+
   it('returns an offline tool-safety decision with probabilities', async () => {
     const response = await fetch(`${await listen()}/api/tool-safety/evaluate`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ toolCallId: 'read-status' }),

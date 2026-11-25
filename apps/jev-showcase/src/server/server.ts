@@ -88,6 +88,41 @@ function createModerationClient(environment: NodeJS.ProcessEnv) {
 
 async function handleRequest(request: IncomingMessage, response: ServerResponse, environment: NodeJS.ProcessEnv): Promise<void> {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (request.method === 'POST' && requestUrl.pathname === '/api/strands-guardrails/run') {
+    const upstream = environment.STRANDS_GUARDRAILS_URL;
+    if (!upstream) {
+      sendJson(response, 503, { error: 'Start the Strands guardrails example stack to use this demo.' });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readJson(request);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TypeError();
+      const prompt = (body as { prompt?: unknown }).prompt;
+      const mock = (body as { mock?: unknown }).mock;
+      if (typeof prompt !== 'string' || prompt.trim().length === 0 || prompt.length > 2000 || (mock !== undefined && typeof mock !== 'boolean')) throw new TypeError();
+    } catch {
+      sendJson(response, 400, { error: 'Provide a prompt of 1 to 2000 characters.' });
+      return;
+    }
+    const abort = new AbortController();
+    response.once('close', () => { if (!response.writableEnded) abort.abort(); });
+    try {
+      const target = new URL('/run', upstream);
+      const result = await fetch(target, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'text/event-stream' }, body: JSON.stringify(body), signal: abort.signal });
+      response.writeHead(result.status, { 'content-type': result.headers.get('content-type') ?? 'application/json; charset=utf-8', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
+      if (!result.body) { response.end(); return; }
+      for await (const chunk of result.body) {
+        if (abort.signal.aborted || !response.write(chunk)) {
+          if (!abort.signal.aborted) await new Promise<void>((resolve) => response.once('drain', resolve));
+        }
+      }
+      if (!response.writableEnded) response.end();
+    } catch {
+      if (!abort.signal.aborted && !response.headersSent) sendJson(response, 502, { error: 'The Strands guardrails service is unavailable.' });
+    }
+    return;
+  }
   if (request.method === 'POST' && requestUrl.pathname === '/api/use-cases/jev-agent/run') {
     const disconnectController = new AbortController();
     response.once('close', () => {

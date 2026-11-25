@@ -6,6 +6,7 @@ import { decideWithThresholds, playgroundScenarios, summarizeOutcomes, threshold
 import { ContentModerationPage } from './moderation.js';
 import { ToolSafetyPage } from './tool-safety-page.js';
 import { PiiPhiGuardrailsPage } from './pii-phi-guardrails.js';
+import { StrandsGuardrailsPage } from './strands-guardrails.js';
 import { DecisionPipelinePage } from './decision-pipeline-page.js';
 import { currentEngineSelection } from './engine-switch.js';
 
@@ -24,6 +25,7 @@ const useCases = [
   { number: '05', title: 'Jev consulting agent', text: 'Let an agent check with Jev before it acts.', href: '/jev-agent', testId: 'jev-agent__home-link' },
   { number: '06', title: 'Confidence playground', text: 'Adjust confidence thresholds while the evidence stays fixed.', href: '#confidence-playground', testId: 'home__threshold-playground-link' },
   { number: '07', title: 'PII/PHI guardrails', text: 'Inspect synthetic sensitive patterns before a mock agent.', href: '/pii-phi-guardrails', testId: 'home__pii-phi-guardrails-link' },
+  { number: '08', title: 'Strands + LiteLLM guardrails', text: 'Stream an agent response and inspect the guardrail verdicts.', href: '/strands-guardrails', testId: 'home__strands-guardrails-link' },
 ];
 
 const sampleTicket = 'My headphones arrived with a cracked ear cup, and I need a replacement before my trip next week.';
@@ -33,6 +35,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
   if (path === '/tool-safety') return <ToolSafetyPage />;
   if (path === '/content-moderation') return <ContentModerationPage mode={mode} />;
   if (path === '/pii-phi-guardrails') return <PiiPhiGuardrailsPage />;
+  if (path === '/strands-guardrails') return <StrandsGuardrailsPage />;
   if (path === '/decision-pipeline') return <DecisionPipelinePage mode={mode} />;
   const [ticket, setTicket] = useState(sampleTicket);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
@@ -88,6 +91,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           <a href="/content-moderation" className="hover:text-brand">Content moderation</a>
           <a href="/decision-pipeline" data-testid="decision-pipeline-nav" className="hover:text-brand">Decision receipts</a>
           <a href="/pii-phi-guardrails" data-testid="nav-pii-phi-guardrails" className="hover:text-brand">PII/PHI guardrails</a>
+          <a href="/strands-guardrails" data-testid="nav-strands-guardrails" className="hover:text-brand">Strands + LiteLLM</a>
           <a href="/jev-agent" data-testid="jev-agent__nav-link" className="hover:text-brand">Jev consulting agent</a>
         </nav>
         <button
@@ -125,6 +129,7 @@ export function App({ mode, path = window.location.pathname }: AppProps) {
           ['/content-moderation', 'Content moderation'],
           ['/decision-pipeline', 'Decision receipts'],
           ['/pii-phi-guardrails', 'PII/PHI guardrails'],
+          ['/strands-guardrails', 'Strands + LiteLLM guardrails'],
           ['/jev-agent', 'Jev consulting agent'],
         ].map(([href, label]) => <a key={href} href={href} onClick={() => setMobileNavigationOpen(false)} className="rounded-lg px-3 py-2.5 transition hover:bg-elevated hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/25">{label}</a>)}
       </nav>}

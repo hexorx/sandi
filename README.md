@@ -24,6 +24,20 @@ env -u TYPESAFE_API_KEY JEV_MODE=mock PORT=3000 corepack pnpm --filter @sandi/je
 
 Health check: `GET /healthz`.
 
+## Strands + LiteLLM guardrails example (local)
+
+The showcase includes `/strands-guardrails`. To run the Python Strands sidecar and LiteLLM proxy with the existing Jev app, configure a local Ollama endpoint and a private proxy key in the ignored `.env` file, then start the stack:
+
+```sh
+cp .env.example .env
+# Set LITELLM_MASTER_KEY to a locally generated value and OLLAMA_BASE_URL to your local Ollama server.
+docker compose --env-file .env -f compose.guardrails.yaml up --build
+```
+
+The compose stack binds the existing showcase port to `127.0.0.1` by default; set `SHOWCASE_BIND_ADDRESS` to a LAN or tailnet interface address when running it on drone. The Python service and LiteLLM proxy stay on the private compose network. The proxy uses local pattern checks in its pre-call hook. The service screens input and holds model output until its email, phone, and unsafe-request checks finish, then streams the approved text and a structured `guardrail` SSE event containing every decision and its details. The checkbox runs a deterministic offline mock without calling the model.
+
+SSE event names are `token`, `guardrail`, and `done`. `guardrail` carries `{stage, decision, guardrails:[{name, decision, details}]}`. Model output is withheld until screened.
+
 Docker (from repo root):
 
 ```sh

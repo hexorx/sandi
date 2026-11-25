@@ -36,6 +36,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build production image
         run: docker build --file apps/jev-showcase/Dockerfile --tag sandi-jev-showcase:ci .
+      - name: Build Strands guardrails image
+        run: docker build --file apps/strands-guardrails/Dockerfile --tag sandi-strands-guardrails:ci .
       - name: Check mock-mode endpoints
         shell: bash
         run: |
