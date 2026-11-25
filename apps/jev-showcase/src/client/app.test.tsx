@@ -50,6 +50,15 @@ describe('landing page', () => {
     expect(screen.getByTestId('jev-agent__nav-link')).toHaveAttribute('href', '/jev-agent');
   });
 
+  it('links the Strands and LiteLLM guardrails example from the showcase', () => {
+    render(<App mode="mock" />);
+    expect(screen.getByTestId('home__strands-guardrails-link')).toHaveAttribute('href', '/strands-guardrails');
+    expect(screen.getByTestId('nav-strands-guardrails')).toHaveAttribute('href', '/strands-guardrails');
+    cleanup();
+    render(<App mode="mock" path="/strands-guardrails" />);
+    expect(screen.getByRole('heading', { name: 'Strands + LiteLLM guardrails' })).toBeInTheDocument();
+  });
+
   it('links from the home screen to the content moderation route', () => {
     render(<App mode="mock" path="/" />);
     expect(screen.getByTestId('home__content-moderation-link')).toHaveAttribute('href', '/content-moderation');

@@ -1,0 +1,35 @@
+services:
+  jev-showcase:
+    build:
+      context: .
+      dockerfile: apps/jev-showcase/Dockerfile
+    ports:
+      - "${SHOWCASE_BIND_ADDRESS:-127.0.0.1}:3000:3000"
+    environment:
+      STRANDS_GUARDRAILS_URL: http://strands-guardrails:8000
+    depends_on:
+      - strands-guardrails
+  strands-guardrails:
+    build:
+      context: .
+      dockerfile: apps/strands-guardrails/Dockerfile
+    environment:
+      LITELLM_API_BASE: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in a local ignored .env file}
+      STRANDS_MODEL_ID: litellm_proxy/local-model
+    depends_on:
+      - litellm
+    expose:
+      - "8000"
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.80.11-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in a local ignored .env file}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:?Set OLLAMA_BASE_URL to a reachable local Ollama instance}
+      LITELLM_MODEL: ${LITELLM_MODEL:-ollama/qwen2.5:3b}
+    volumes:
+      - ./litellm.config.yaml:/app/config.yaml:ro
+      - ./apps/strands-guardrails:/app:ro
+    expose:
+      - "4000"
