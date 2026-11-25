@@ -51,9 +51,12 @@ class LiteLLMGuardrailTests(unittest.IsolatedAsyncioTestCase):
 
         result = [item async for item in callback.async_post_call_streaming_iterator_hook(None, response(), {})]
 
-        self.assertEqual(result[0]["choices"][0]["delta"]["content"], "Safe answer.")
+        terminal_content = result[0]["choices"][0]["delta"]["content"]
+        answer, embedded_verdict = _without_verdict_marker(terminal_content)
+        self.assertEqual(answer, "Safe answer.")
         self.assertEqual(result[-1]["choices"][0]["finish_reason"], "stop")
         verdict = result[-1]["guardrail_verdict"]
+        self.assertEqual(embedded_verdict, verdict)
         self.assertEqual(verdict["decision"], "allow")
         self.assertEqual(verdict["guardrails"][0]["name"], "email detector")
 

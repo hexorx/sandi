@@ -25,6 +25,11 @@ def _chunk_text(chunk: Any) -> str:
         content = _field(delta, "content") if delta is not None else None
         if isinstance(content, str):
             text.append(content)
+        for tool_call in _field(delta, "tool_calls", []) or []:
+            function = _field(tool_call, "function")
+            arguments = _field(function, "arguments") if function is not None else None
+            if isinstance(arguments, str):
+                text.append(arguments)
     return "".join(text)
 
 
@@ -86,5 +91,11 @@ async def stream_with_verdict(response: AsyncIterator[Any]) -> AsyncIterator[Any
     for choice in final_chunk.get("choices", []):
         if choice.get("finish_reason") is None:
             choice["finish_reason"] = "stop"
+        delta = choice.get("delta")
+        if not isinstance(delta, dict):
+            delta = {}
+            choice["delta"] = delta
+        content = delta.get("content")
+        delta["content"] = (content if isinstance(content, str) else "") + verdict["choices"][0]["delta"]["content"]
     final_chunk["guardrail_verdict"] = verdict["guardrail_verdict"]
     yield final_chunk
