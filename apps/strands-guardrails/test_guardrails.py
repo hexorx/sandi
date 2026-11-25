@@ -4,6 +4,13 @@ from guardrails import blocked, inspect
 from guardrail_streaming import GuardrailBlocked, buffer_guarded_stream
 from streaming import demo_events
 
+try:
+    from litellm_guardrail import LocalPatternGuardrail
+except ModuleNotFoundError as error:
+    if error.name not in {"fastapi", "litellm"}:
+        raise
+    LocalPatternGuardrail = None
+
 
 class GuardrailTests(unittest.TestCase):
     def test_pii_detector_blocks_and_reports_details(self):
@@ -58,6 +65,45 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(released, [])
         self.assertEqual(error.exception.results[0]["decision"], "block")
+
+
+@unittest.skipIf(LocalPatternGuardrail is None, "LiteLLM dependencies are installed in the demo container")
+class LiteLLMCallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_callback_releases_allowed_chunks(self):
+        chunks = [{"choices": [{"delta": {"content": "A safe response."}}]}]
+
+        async def response():
+            for chunk in chunks:
+                yield chunk
+
+        callback = LocalPatternGuardrail()
+        emitted = [
+            chunk
+            async for chunk in callback.async_post_call_streaming_iterator_hook(
+                user_api_key_dict=None, response=response(), request_data={}
+            )
+        ]
+        self.assertEqual(emitted, chunks)
+
+    async def test_callback_returns_guardrail_details_without_releasing_blocked_chunks(self):
+        chunks = [{"choices": [{"delta": {"content": "Contact demo@example.test"}}]}]
+        released = []
+
+        async def response():
+            for chunk in chunks:
+                yield chunk
+
+        callback = LocalPatternGuardrail()
+        with self.assertRaises(Exception) as error:
+            async for chunk in callback.async_post_call_streaming_iterator_hook(
+                user_api_key_dict=None, response=response(), request_data={}
+            ):
+                released.append(chunk)
+
+        self.assertEqual(released, [])
+        self.assertEqual(error.exception.status_code, 400)
+        self.assertEqual(error.exception.detail["decision"], "block")
+        self.assertTrue(error.exception.detail["guardrails"])
 
 
 if __name__ == "__main__":
