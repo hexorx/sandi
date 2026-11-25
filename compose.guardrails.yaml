@@ -32,5 +32,6 @@ services:
       - ./litellm.config.yaml:/app/config.yaml:ro
       - ./apps/strands-guardrails/litellm_guardrail.py:/app/litellm_guardrail.py:ro
       - ./apps/strands-guardrails/guardrails.py:/app/guardrails.py:ro
+      - ./apps/strands-guardrails/guardrail_streaming.py:/app/guardrail_streaming.py:ro
     expose:
       - "4000"
