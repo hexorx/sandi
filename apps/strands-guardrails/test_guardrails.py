@@ -1,6 +1,7 @@
 import unittest
 
 from guardrails import blocked, inspect
+from guardrail_streaming import GuardrailBlocked, buffer_guarded_stream
 from streaming import demo_events
 
 
@@ -27,6 +28,36 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any("event: token" in chunk for chunk in events))
         verdict = next(chunk for chunk in events if "event: guardrail" in chunk)
         self.assertIn('"decision":"block"', verdict)
+
+    async def test_litellm_stream_hook_releases_allowed_chunks_after_inspection(self):
+        chunks = [
+            {"choices": [{"delta": {"content": "A safe "}}]},
+            {"choices": [{"delta": {"content": "answer."}}]},
+        ]
+
+        async def response():
+            for chunk in chunks:
+                yield chunk
+
+        emitted = [chunk async for chunk in buffer_guarded_stream(response())]
+        self.assertEqual(emitted, chunks)
+
+    async def test_litellm_stream_hook_does_not_release_blocked_output(self):
+        chunks = [
+            {"choices": [{"delta": {"content": "Contact demo@example.test"}}]},
+        ]
+        released = []
+
+        async def response():
+            for chunk in chunks:
+                yield chunk
+
+        with self.assertRaises(GuardrailBlocked) as error:
+            async for chunk in buffer_guarded_stream(response()):
+                released.append(chunk)
+
+        self.assertEqual(released, [])
+        self.assertEqual(error.exception.results[0]["decision"], "block")
 
 
 if __name__ == "__main__":
