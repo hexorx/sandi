@@ -30,6 +30,7 @@ services:
       LITELLM_MODEL: ${LITELLM_MODEL:-ollama/qwen2.5:3b}
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
-      - ./apps/strands-guardrails:/app:ro
+      - ./apps/strands-guardrails/litellm_guardrail.py:/app/litellm_guardrail.py:ro
+      - ./apps/strands-guardrails/guardrails.py:/app/guardrails.py:ro
     expose:
       - "4000"

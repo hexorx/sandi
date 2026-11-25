@@ -36,6 +36,8 @@ docker compose --env-file .env -f compose.guardrails.yaml up --build
 
 The compose stack binds the existing showcase port to `127.0.0.1` by default; set `SHOWCASE_BIND_ADDRESS` to a LAN or tailnet interface address when running it on drone. The Python service and LiteLLM proxy stay on the private compose network. The proxy uses local pattern checks in its pre-call hook. The service screens input and holds model output until its email, phone, and unsafe-request checks finish, then streams the approved text and a structured `guardrail` SSE event containing every decision and its details. The checkbox runs a deterministic offline mock without calling the model.
 
+The LiteLLM service mounts its config and the two guardrail Python modules as individual files under `/app`, preserving the image's `/app/docker/prod_entrypoint.sh`.
+
 SSE event names are `token`, `guardrail`, and `done`. `guardrail` carries `{stage, decision, guardrails:[{name, decision, details}]}`. Model output is withheld until screened.
 
 Docker (from repo root):
