@@ -28,6 +28,12 @@ def _proxy_verdict(value: Any) -> dict[str, Any] | None:
         verdict = value.get("guardrail_verdict")
         if isinstance(verdict, dict):
             return verdict
+        if (
+            isinstance(value.get("guardrail_name"), str)
+            and value.get("decision") in ("allow", "block")
+            and isinstance(value.get("guardrails"), list)
+        ):
+            return value
         data = value.get("data")
         if isinstance(data, str) and VERDICT_MARKER in data:
             candidate = _proxy_verdict(data.split(VERDICT_MARKER, 1)[1])

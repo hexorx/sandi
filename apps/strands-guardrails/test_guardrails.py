@@ -4,7 +4,7 @@ import unittest
 from guardrails import blocked, inspect
 from guardrail_streaming import VERDICT_MARKER
 from litellm_guardrail import LocalPatternGuardrail
-from main import _without_verdict_marker
+from main import _proxy_verdict, _without_verdict_marker
 from streaming import GuardedAnswer, ProxyGuardrailBlocked, demo_events
 
 
@@ -86,6 +86,16 @@ class ProxyVerdictAdapterTests(unittest.TestCase):
 
         self.assertEqual(answer, "Safe answer.")
         self.assertEqual(received_verdict, verdict)
+
+    def test_input_error_detail_is_the_proxy_verdict(self):
+        verdict = {
+            "guardrail_name": "local-pattern-guardrail",
+            "decision": "block",
+            "details": "Email detector blocked input.",
+            "guardrails": [],
+        }
+
+        self.assertEqual(_proxy_verdict({"detail": verdict}), verdict)
 
 
 class StreamingTests(unittest.IsolatedAsyncioTestCase):
