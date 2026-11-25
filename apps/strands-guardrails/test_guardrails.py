@@ -36,6 +36,40 @@ class LiteLLMGuardrailTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 400)
         self.assertIn("email detector", str(raised.exception.detail))
 
+    async def test_stream_hook_emits_allow_verdict_after_safe_chunks(self):
+        callback = LocalPatternGuardrail()
+        chunks = [
+            {"id": "stream-1", "choices": [{"index": 0, "delta": {"content": "Safe answer."}, "finish_reason": None}]},
+        ]
+
+        async def response():
+            for chunk in chunks:
+                yield chunk
+
+        result = [item async for item in callback.async_post_call_streaming_iterator_hook(None, response(), {})]
+
+        self.assertEqual(result[0]["choices"][0]["delta"]["content"], "Safe answer.")
+        self.assertEqual(result[-1]["choices"][0]["finish_reason"], "stop")
+        verdict = result[-1]["guardrail_verdict"]
+        self.assertEqual(verdict["decision"], "allow")
+        self.assertEqual(verdict["guardrails"][0]["name"], "email detector")
+
+    async def test_stream_hook_withholds_blocked_chunks_and_emits_verdict(self):
+        callback = LocalPatternGuardrail()
+        secret = "The fictional contact is demo@example.test."
+
+        async def response():
+            yield {"id": "stream-2", "choices": [{"index": 0, "delta": {"content": secret}, "finish_reason": None}]}
+
+        result = [item async for item in callback.async_post_call_streaming_iterator_hook(None, response(), {})]
+
+        self.assertEqual(len(result), 1)
+        self.assertNotIn(secret, str(result))
+        self.assertEqual(result[0]["choices"][0]["finish_reason"], "content_filter")
+        verdict = result[0]["guardrail_verdict"]
+        self.assertEqual(verdict["decision"], "block")
+        self.assertEqual(verdict["guardrails"][0]["name"], "email detector")
+
 
 class StreamingTests(unittest.IsolatedAsyncioTestCase):
     async def test_stream_emits_tokens_and_final_guardrail_result(self):

@@ -34,7 +34,11 @@ cp .env.example .env
 docker compose --env-file .env -f compose.guardrails.yaml up --build
 ```
 
-The compose stack binds the existing showcase port to `127.0.0.1` by default; set `SHOWCASE_BIND_ADDRESS` to a LAN or tailnet interface address when running it on drone. The Python service and LiteLLM proxy stay on the private compose network. The proxy uses local pattern checks in its pre-call hook. The service screens input and holds model output until its email, phone, and unsafe-request checks finish, then streams the approved text and a structured `guardrail` SSE event containing every decision and its details. The checkbox runs a deterministic offline mock without calling the model.
+The compose stack binds the existing showcase port to `127.0.0.1` by default; set `SHOWCASE_BIND_ADDRESS` to a LAN or tailnet interface address when running it on drone. The Python service and LiteLLM proxy stay on the private compose network. LiteLLM loads one global callback from `litellm.config.yaml`; its local email, phone, and unsafe-request policy applies to all chat completion calls through the proxy. It blocks matching input before calling the model and buffers streamed output until screening finishes.
+
+For streamed chat completions, the final OpenAI-compatible chunk carries a `guardrail_verdict` extension: `{guardrail_name, decision, details, guardrails}`. Allowed responses include their text chunks followed by an `allow` verdict. A blocked output includes only the `block` verdict chunk, so no blocked text is released. Input blocks return HTTP 400 with the same verdict fields in the error `detail`, because no model stream is started. Clients should read this extension from each raw chunk and treat the verdict as authoritative. For example, point an OpenAI-compatible client at `http://localhost:4000/v1` using the local `LITELLM_MASTER_KEY`, request `stream: true`, and inspect `chunk.guardrail_verdict` while iterating the stream.
+
+The Sandi SSE endpoint retains `token`, `guardrail`, and `done` event names for its UI. The checkbox runs a deterministic offline mock without calling the model; live calls use the LiteLLM proxy policy. Model output is held until screened.
 
 SSE event names are `token`, `guardrail`, and `done`. `guardrail` carries `{stage, decision, guardrails:[{name, decision, details}]}`. Model output is withheld until screened.
 
